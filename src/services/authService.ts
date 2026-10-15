@@ -17,7 +17,6 @@
  * - Demo mode (no base URL): the previous local OTP flow, kept so the UI
  *   works end to end with zero backend. Clearly marked, swappable.
  */
-import { SEED_USERS } from '../data/mockData';
 import { authApi, toE164Indian } from './backend';
 import { isBackendConfigured } from './api';
 import { clearSession, loadSession, saveSession, type PersistedUser } from './tokenStore';
@@ -60,17 +59,8 @@ export function isValidOtpLive(code: string): boolean {
 }
 
 function lookupDemoAdmin(phone: string): SessionUser {
-  const found = SEED_USERS.find((u) => u.phone.replace(/\D/g, '').slice(-10) === phone);
-  if (found) {
-    return {
-      id: `demo-${found.id}`,
-      phone,
-      name: found.owner.split('·')[0].trim() || found.firm,
-      role: 'Primary admin',
-      roles: ['admin'],
-      firm: found.firm,
-    };
-  }
+  // No-backend mode: there is no user directory to look up, so every verified
+  // number signs in as a generic local admin for that session.
   return { id: `demo-${phone}`, phone, name: 'Admin', role: 'Admin', roles: ['admin'], firm: '' };
 }
 

@@ -65,10 +65,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        style={{
-          background: 'var(--color-bg)', borderRadius: 12, width: 520,
-          maxWidth: '100%', boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
-        }}
+        className="dialog-panel"
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-neutral-200)' }}>

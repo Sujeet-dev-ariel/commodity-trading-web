@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Field } from '../../components/common/controls';
-import { SEED_PARSE_TEMPLATES } from '../../data/mockData';
 import { useAdmin } from '../../store/AdminContext';
 
 export function SettingsPage() {
@@ -10,7 +9,7 @@ export function SettingsPage() {
     categories, newCategory, setNewCategory, addCategory,
     expiryTime, setExpiryTime, timezone,
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
-    liveMode, settingsLoading, settingsError, refreshLiveSettings, dataSource,
+    liveMode, settingsLoading, settingsError, refreshLiveSettings,
     liveCategories, categoryError, renameCategory, deleteCategory,
     liveCommodities, commoditiesLoading, commodityError, refreshCommodities,
     addCommodity, renameCommodity, deleteCommodity,
@@ -77,7 +76,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="settings-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' }}>
+    <div className="settings-split">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         {liveMode ? (
           <div className="callout-info">
@@ -91,11 +90,8 @@ export function SettingsPage() {
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
             Price expiry {settingsLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
-            {liveMode && dataSource.settings === 'mock' ? (
-              <span className="tag tag-neutral" style={{ fontWeight: 400 }}>Demo data</span>
-            ) : null}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-2col">
             <Field label="Expires daily at">
               <input className="input" type="time" value={expiryTime} onChange={(e) => setExpiryTime(e.target.value)} />
             </Field>
@@ -186,9 +182,6 @@ export function SettingsPage() {
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
             Commodity taxonomy
-            {liveMode && dataSource.settings === 'mock' ? (
-              <span className="tag tag-neutral" style={{ fontWeight: 400 }}>Demo data</span>
-            ) : null}
           </div>
           <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
             Categories and items available across the platform. Editing here keeps the product
@@ -306,16 +299,8 @@ export function SettingsPage() {
           </div>
           <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
             When a supplier&apos;s price sheet has a stable layout, the parser can learn it once and reuse it.
-            View, re-teach and version templates here.
+            No templates saved yet — they will be listed here once the parser backend exists.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, opacity: 0.55 }}>
-            {SEED_PARSE_TEMPLATES.map((p) => (
-              <div key={p.firm} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8, fontSize: 12.5 }}>
-                <span style={{ fontWeight: 600 }}>{p.firm}</span>
-                <span className="text-muted">{p.meta}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="callout-info">

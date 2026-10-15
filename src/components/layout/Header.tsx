@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '../../store/AdminContext';
 import { useAuth } from '../../store/AuthContext';
@@ -10,11 +10,26 @@ function initialsOf(name: string): string {
   return s || 'A';
 }
 
-export function Header() {
+export function Header({
+  onToggleSidebar,
+  sidebarCollapsed = false,
+}: {
+  onToggleSidebar?: () => void;
+  sidebarCollapsed?: boolean;
+}) {
   const { searchQuery, setSearchQuery, countdown } = useAdmin();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
+    };
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, [drawerOpen]);
 
   const handleLogout = () => {
     void logout();
@@ -23,30 +38,55 @@ export function Header() {
 
   return (
     <>
-      <div style={{
-        background: 'var(--color-bg)', borderBottom: '1px solid var(--color-neutral-300)',
-        padding: '12px 28px', display: 'flex', alignItems: 'center', gap: 20,
-      }}
-      >
+      <div className="header-bar">
+        {onToggleSidebar ? (
+          <button
+            className="btn btn-secondary header-collapse-btn"
+            onClick={onToggleSidebar}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            style={{ height: 36, padding: '0 10px', fontSize: 15, flex: 'none' }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'none' }}
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              <polyline points="13 8 11 12 13 16" />
+            </svg>
+          </button>
+        ) : null}
         <button
           className="btn btn-secondary btn-hamburger"
           onClick={() => setDrawerOpen(true)}
           style={{ height: 36, padding: '0 12px', fontSize: 16, flex: 'none' }}
           aria-label="Open navigation"
+          aria-expanded={drawerOpen}
         >
           ☰
         </button>
         <input
-          className="input"
+          className="input header-search"
           placeholder="Search firm, phone, item, trade ID…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ height: 36, maxWidth: 340, flex: 1 }}
           aria-label="Search"
         />
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 20 }}>
+        <div className="header-right">
           <div className="header-meta" style={{ textAlign: 'right', lineHeight: 1.3 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Sunday, 9 August 2026</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>
+              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </div>
             <div className="text-muted" style={{ fontSize: 11.5 }}>
               Prices expire in{' '}
               <strong style={{ color: 'var(--color-accent-700)', fontVariantNumeric: 'tabular-nums' }}>
@@ -55,11 +95,7 @@ export function Header() {
               {' '}· 2:00 AM IST
             </div>
           </div>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 9, paddingLeft: 20,
-            borderLeft: '1px solid var(--color-neutral-300)',
-          }}
-          >
+          <div className="header-user">
             <div style={{
               width: 32, height: 32, borderRadius: 999, background: 'var(--color-accent-700)',
               color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -68,8 +104,8 @@ export function Header() {
             >
               {initialsOf(user?.name ?? 'Admin')}
             </div>
-            <div style={{ lineHeight: 1.25 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{user?.name ?? 'Admin'}</div>
+            <div className="header-user-text">
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{user?.name ?? 'Admin'}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{user?.role ?? 'Admin'}</div>
             </div>
             <button
@@ -86,15 +122,11 @@ export function Header() {
       {drawerOpen ? (
         <div
           className="sidebar-drawer"
-          style={{
-            display: 'none', position: 'fixed', inset: 0, zIndex: 80,
-            background: 'rgba(15,42,94,.42)',
-          }}
           onClick={() => setDrawerOpen(false)}
           role="presentation"
         >
           <div
-            style={{ width: 260, display: 'flex', flexDirection: 'column', background: 'var(--color-accent-900)' }}
+            className="sidebar-drawer-panel"
             onClick={(e) => e.stopPropagation()}
           >
             <Sidebar onNavigate={() => setDrawerOpen(false)} />

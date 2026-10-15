@@ -18,11 +18,17 @@ export function TradesPage() {
       [t.code, t.item, t.seller, t.buyer, t.broker].some((v) => v.toLowerCase().includes(q)));
   }, [trades, searchQuery]);
 
+  const tradeValue = (t: { bags: number; price: number }) => t.price * t.bags;
+  const totalValue = filtered.reduce((s, t) => s + tradeValue(t), 0);
+  const viaBroker = filtered.filter((t) => t.broker !== 'Self').length;
+  const direct = filtered.length - viaBroker;
+  const firms = new Set(filtered.flatMap((t) => [t.seller, t.buyer])).size;
+
   const summary = [
-    { label: 'Trades closed today', value: '9', meta: '7 through a broker, 2 direct', hot: false },
-    { label: 'Value traded today', value: lakhs(4720000), meta: 'across 6 firms', hot: false },
-    { label: 'Brokerage earned today', value: inr(11802), meta: 'Ratan ₹5,420 · Sanjay ₹4,240 · Naveen ₹2,142', hot: false },
-    { label: 'Brokerage this month', value: inr(268700), meta: 'placeholder until the model is set', hot: true },
+    { label: 'Trades closed', value: String(filtered.length), meta: filtered.length ? `${viaBroker} through a broker, ${direct} direct` : 'no trade feed from the backend yet', hot: false },
+    { label: 'Value traded', value: lakhs(totalValue), meta: filtered.length ? `across ${firms} firms` : '—', hot: false },
+    { label: 'Brokerage earned', value: inr(Math.round(totalValue * 0.0025)), meta: 'placeholder until the model is set', hot: false },
+    { label: 'Brokerage this month', value: inr(0), meta: 'placeholder until the model is set', hot: true },
   ];
 
   const handleExport = () => {
@@ -38,7 +44,7 @@ export function TradesPage() {
 
   return (
     <>
-      <div className="broker-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+      <div className="broker-grid">
         {summary.map((b) => (
           <div
             key={b.label}
@@ -78,7 +84,7 @@ export function TradesPage() {
               </div>
             </div>
           ))}
-          {filtered.length === 0 ? <EmptyState message="No trades match the search." /> : null}
+          {filtered.length === 0 ? <EmptyState message="No trades yet — the backend exposes no trades feed, so closed trades recorded this session appear here." /> : null}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { EmptyState, Field, FilterTag } from '../../components/common/controls';
-import { STATUS_CLS } from '../../data/mockData';
+import { STATUS_CLS } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
 
@@ -20,7 +20,7 @@ export function NegotiationsPage() {
   }, [negotiations, negoFilter, searchQuery]);
 
   const active = negotiations.find((n) => n.id === selectedNegoId) ?? negotiations[0];
-  if (!active) return <EmptyState message="No negotiations." />;
+  if (!active) return <EmptyState message="No negotiations yet — the backend exposes no negotiations feed, so threads started in-session appear here." />;
 
   const expiry = (urgent: boolean): React.CSSProperties => ({
     fontSize: 11.5, marginTop: 2, fontWeight: 600, color: urgent ? '#d64545' : 'var(--color-neutral-600)',
@@ -32,7 +32,7 @@ export function NegotiationsPage() {
         <strong>Visible by design.</strong> Admins see every live negotiation in full — both parties are told
         this at sign-up. Nudges and relayed offers are attributed to the admin who sent them.
       </div>
-      <div className="nego-split" style={{ display: 'grid', gridTemplateColumns: '340px minmax(0,1fr)', gap: 18, alignItems: 'start' }}>
+      <div className="nego-split">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 5 }}>
             <FilterTag label="Active" active={negoFilter === 'active'} onClick={() => setNegoFilter('active')} />
@@ -90,8 +90,8 @@ export function NegotiationsPage() {
               const isAdmin = m.side === 'admin';
               return (
                 <div key={i} style={{ display: 'flex', justifyContent: isBuyer ? 'flex-start' : 'flex-end' }}>
-                  <div style={{
-                    maxWidth: '62%', borderRadius: 12, padding: '11px 15px',
+                  <div className="thread-bubble" style={{
+                    borderRadius: 12, padding: '11px 15px',
                     ...(isBuyer
                       ? { background: 'var(--color-bg)', border: '1px solid var(--color-neutral-300)' }
                       : isAdmin
@@ -121,7 +121,7 @@ export function NegotiationsPage() {
           </div>
           <div style={{ padding: '16px 20px', borderTop: '1px solid var(--color-neutral-200)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700 }}>Admin actions</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="admin-actions-grid">
               <Field label="Message a party">
                 <div style={{ display: 'flex', gap: 7 }}>
                   <input

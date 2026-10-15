@@ -31,7 +31,7 @@ export function AuditPage() {
 
   return (
     <>
-      <div className="panel" style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 16px', flexWrap: 'wrap' }}>
+      <div className="panel filter-bar">
         <select className="input" value={auditAdmin} onChange={(e) => setAuditAdmin(e.target.value)} style={{ height: 34, width: 180, fontSize: 12.5 }}>
           {admins.map((a) => (
             <option key={a}>{a}</option>

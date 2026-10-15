@@ -1,24 +1,72 @@
 import { Link } from 'react-router-dom';
-import { SEED_ACTIVITY, SEED_QUEUE, TONE_COLOR } from '../../data/mockData';
+import { TONE_COLOR } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
 
-const METRICS = [
-  { label: 'Live sell listings', value: '148', delta: '+22 since the 2 AM reset' },
-  { label: 'Open buy requirements', value: '12', delta: '8 have at least one offer' },
-  { label: 'Active negotiations', value: '4', delta: '2 stalled or near expiry' },
-  { label: 'Trades closed today', value: '9', delta: '₹47.2L of goods' },
-  { label: 'Brokerage today', value: inr(11802), delta: 'model still open' },
-];
+interface QueueEntry {
+  count: string;
+  title: string;
+  meta: string;
+  action: string;
+  target: string;
+  tone: string;
+}
 
 export function DashboardPage() {
-  const { negotiations } = useAdmin();
+  const {
+    rows, listingsLoading, invites, invitesLoading,
+    negotiations, trades, freightRoutes, audit,
+  } = useAdmin();
+
   const live = negotiations.filter((n) => n.state !== 'Completed');
+  const sellActive = rows.filter((r) => r.side === 'SELL' && r.status === 'Active');
+  const buyActive = rows.filter((r) => r.side === 'BUY' && r.status === 'Active');
+  const noPrice = rows.filter((r) => r.price == null && r.status === 'Active');
+  const urgentNego = live.filter((n) => n.urgent);
+  const pendingFreight = freightRoutes.filter((r) => r.status === 'Pending review');
+
+  const metrics = [
+    { label: 'Live sell listings', value: String(sellActive.length), delta: `${rows.length} rows loaded` },
+    { label: 'Open buy requirements', value: String(buyActive.length), delta: `${buyActive.length} awaiting offers` },
+    { label: 'Active negotiations', value: String(live.length), delta: urgentNego.length ? `${urgentNego.length} urgent` : 'none urgent' },
+    { label: 'Trades closed', value: String(trades.length), delta: trades.length ? 'this session' : 'no trade feed yet' },
+    { label: 'Pending invites', value: String(invites.length), delta: invitesLoading ? 'loading…' : 'awaiting signup' },
+  ];
+
+  const queue: QueueEntry[] = [];
+  if (invites.length > 0) {
+    queue.push({
+      count: String(invites.length), title: 'Pending invites',
+      meta: `Oldest: ${invites[invites.length - 1]?.firm ?? '—'}`,
+      action: 'Review', target: 'users', tone: 'info',
+    });
+  }
+  if (urgentNego.length > 0) {
+    queue.push({
+      count: String(urgentNego.length), title: 'Negotiations need a nudge',
+      meta: urgentNego.slice(0, 2).map((n) => n.item).join(' · '),
+      action: 'Open', target: 'negotiations', tone: 'bad',
+    });
+  }
+  if (noPrice.length > 0) {
+    queue.push({
+      count: String(noPrice.length), title: 'Listings without a price',
+      meta: noPrice.slice(0, 2).map((r) => r.item).join(' · '),
+      action: 'Fix', target: 'listings', tone: 'warn',
+    });
+  }
+  if (pendingFreight.length > 0) {
+    queue.push({
+      count: String(pendingFreight.length), title: 'Freight routes awaiting review',
+      meta: pendingFreight.slice(0, 2).map((r) => `${r.origin} → ${r.dest}`).join(' · '),
+      action: 'Review', target: 'freight', tone: 'warn',
+    });
+  }
 
   return (
     <>
-      <div className="metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
-        {METRICS.map((m) => (
+      <div className="metrics-grid">
+        {metrics.map((m) => (
           <div key={m.label} className="panel" style={{ padding: '15px 16px' }}>
             <div className="text-muted" style={{ fontSize: 11.5 }}>{m.label}</div>
             <div style={{ fontSize: 26, fontWeight: 700, marginTop: 6, letterSpacing: '-.015em', fontVariantNumeric: 'tabular-nums' }}>
@@ -32,30 +80,36 @@ export function DashboardPage() {
       <div className="panel">
         <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--color-neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Needs attention</div>
-          <div className="tag tag-accent-2">{SEED_QUEUE.length} open</div>
+          <div className="tag tag-accent-2">{queue.length} open</div>
         </div>
-        <div className="queue-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)' }}>
-          {SEED_QUEUE.map((q) => (
-            <div key={q.title} style={{ padding: '16px 18px', borderRight: '1px solid var(--color-neutral-200)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 9, height: 9, borderRadius: 999, flex: 'none', background: TONE_COLOR[q.tone] }} />
-                <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{q.count}</div>
+        {queue.length > 0 ? (
+          <div className="queue-grid">
+            {queue.map((q) => (
+              <div key={q.title} style={{ padding: '16px 18px', borderRight: '1px solid var(--color-neutral-200)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 9, height: 9, borderRadius: 999, flex: 'none', background: TONE_COLOR[q.tone] }} />
+                  <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{q.count}</div>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{q.title}</div>
+                <div className="text-muted" style={{ fontSize: 11.5, lineHeight: 1.4 }}>{q.meta}</div>
+                <Link
+                  to={`/${q.target}`}
+                  className="btn btn-secondary"
+                  style={{ marginTop: 'auto', alignSelf: 'flex-start', height: 30, padding: '0 13px', fontSize: 12 }}
+                >
+                  {q.action}
+                </Link>
               </div>
-              <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{q.title}</div>
-              <div className="text-muted" style={{ fontSize: 11.5, lineHeight: 1.4 }}>{q.meta}</div>
-              <Link
-                to={`/${q.target === 'dash' ? 'dash' : q.target}`}
-                className="btn btn-secondary"
-                style={{ marginTop: 'auto', alignSelf: 'flex-start', height: 30, padding: '0 13px', fontSize: 12 }}
-              >
-                {q.action}
-              </Link>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-muted" style={{ padding: '18px', fontSize: 13 }}>
+            {listingsLoading || invitesLoading ? 'Loading live data…' : 'Nothing needs attention right now.'}
+          </div>
+        )}
       </div>
 
-      <div className="dash-split" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 18, alignItems: 'start' }}>
+      <div className="dash-split">
         <div className="panel">
           <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--color-neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>Negotiations happening now</div>
@@ -77,18 +131,30 @@ export function DashboardPage() {
               </div>
             </div>
           ))}
+          {live.length === 0 ? (
+            <div className="text-muted" style={{ padding: '18px', fontSize: 13 }}>
+              No live negotiations. The backend exposes no negotiations feed yet, so threads started in-session appear here.
+            </div>
+          ) : null}
         </div>
 
         <div className="panel">
           <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--color-neutral-200)', fontWeight: 700, fontSize: 15 }}>
-            Live activity
+            Session activity
           </div>
-          {SEED_ACTIVITY.map((a) => (
-            <div key={`${a.time}-${a.text.slice(0, 12)}`} style={{ padding: '10px 18px', borderBottom: '1px solid var(--color-neutral-200)', display: 'flex', gap: 12 }}>
-              <div className="text-muted" style={{ fontSize: 11.5, width: 42, flex: 'none', fontVariantNumeric: 'tabular-nums' }}>{a.time}</div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.45 }}>{a.text}</div>
+          {audit.slice(0, 8).map((a, i) => (
+            <div key={`${a.when}-${a.entity}-${i}`} style={{ padding: '10px 18px', borderBottom: '1px solid var(--color-neutral-200)', display: 'flex', gap: 12 }}>
+              <div className="text-muted" style={{ fontSize: 11.5, width: 110, flex: 'none', fontVariantNumeric: 'tabular-nums' }}>{a.when}</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.45 }}>
+                <strong>{a.admin}</strong> · {a.action} — {a.entity}
+              </div>
             </div>
           ))}
+          {audit.length === 0 ? (
+            <div className="text-muted" style={{ padding: '18px', fontSize: 13 }}>
+              No admin actions this session yet. Actions you take are recorded here and on the Audit log page.
+            </div>
+          ) : null}
         </div>
       </div>
     </>

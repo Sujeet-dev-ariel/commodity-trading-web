@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { EmptyState, Field, FilterTag } from '../../components/common/controls';
-import { STATUS_CLS } from '../../data/mockData';
+import { STATUS_CLS } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 
 const FILTERS = [
@@ -22,11 +22,12 @@ export function UsersPage() {
     invites, revokeInvite, inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
     inviteBuyer, toggleInviteBuyer, inviteSeller, toggleInviteSeller,
     invitePaymentTerms, setInvitePaymentTerms, inviteError, sendInvite, searchQuery,
-    liveMode, invitesLoading, invitesError, refreshInvites, dataSource,
+    liveMode, invitesLoading, invitesError, refreshInvites,
   } = admin;
 
   // Live backend: invites come from GET /invites (admin or broker role).
-  // There is no backend user-directory endpoint, so the table stays local.
+  // There is no backend user-directory endpoint, so the table starts empty
+  // and only reflects session-local changes.
   useEffect(() => {
     if (liveMode) void refreshInvites();
   }, [liveMode, refreshInvites]);
@@ -39,7 +40,7 @@ export function UsersPage() {
   }, [users, userFilter, searchQuery]);
 
   return (
-    <div className="users-split" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: 18, alignItems: 'start' }}>
+    <div className="users-split">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {FILTERS.map((f) => (
@@ -77,7 +78,7 @@ export function UsersPage() {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 ? <EmptyState message="No users match this filter." /> : null}
+            {filtered.length === 0 ? <EmptyState message="No users here — the backend exposes no user directory, so this table starts empty." /> : null}
           </div>
         </div>
       </div>
@@ -100,7 +101,7 @@ export function UsersPage() {
           <Field label="Firm name">
             <input
               className="input"
-              placeholder={liveMode ? 'Kept locally — the backend invite stores phone + role only' : 'e.g. Kuber Marketing'}
+              placeholder="Kept locally — the backend invite stores phone + role only"
               value={inviteeFirm}
               onChange={(e) => setInviteeFirm(e.target.value)}
             />
@@ -134,11 +135,8 @@ export function UsersPage() {
         </div>
 
         <div className="panel">
-          <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-200)', fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-200)', fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 8 }}>
             Pending invites
-            {liveMode && dataSource.invites === 'mock' ? (
-              <span className="tag tag-neutral" style={{ fontWeight: 400 }}>Demo data</span>
-            ) : null}
           </div>
           {invitesLoading ? <div className="text-muted" style={{ padding: '18px 16px', fontSize: 13 }}>Loading invites…</div> : null}
           {invitesError ? <div className="field-error" style={{ padding: '12px 16px 0' }}>{invitesError}</div> : null}

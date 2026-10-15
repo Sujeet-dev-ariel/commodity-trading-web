@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { EmptyState, Field, FilterTag, Modal } from '../../components/common/controls';
-import { STATUS_CLS } from '../../data/mockData';
+import { STATUS_CLS } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
 
@@ -16,7 +16,7 @@ export function ListingsPage() {
     openEdit, forceExpire, editId, editPrice, setEditPrice, editWeight, setEditWeight,
     editReason, setEditReason, editError, closeEdit, saveEdit, searchQuery,
     liveMode, listingsLoading, listingsError, listingPage, setListingPage,
-    listingTotal, listingTotalPages, refreshListings, categories, dataSource,
+    listingTotal, listingTotalPages, refreshListings, categories,
   } = admin;
 
   // Live backend: admin sessions read every user's rows via GET /listings
@@ -54,7 +54,7 @@ export function ListingsPage() {
           admin edit-on-behalf endpoint, so a 403 there is the backend&apos;s real answer.
         </div>
       ) : null}
-      <div className="panel" style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px' }}>
+      <div className="panel filter-bar">
         <div style={{ display: 'flex', gap: 5 }}>
           {([['all', 'Both sides'], ['SELL', 'Sell listings'], ['BUY', 'Buy requirements']] as const).map(([key, label]) => (
             <FilterTag key={key} label={label} active={sideFilter === key} onClick={() => { setSideFilter(key); resetPage(); }} />
@@ -67,15 +67,12 @@ export function ListingsPage() {
           ))}
         </select>
         <select className="input" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); resetPage(); }} style={{ height: 34, width: 170, fontSize: 12.5 }}>
-          {['All statuses', 'Active', 'Price expired', 'Traded', 'Withdrawn', ...(liveMode ? ['N/A'] : [])].map((c) => (
+          {['All statuses', 'Active', 'Price expired', 'Traded', 'Withdrawn', 'N/A'].map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
         <div className="text-muted" style={{ marginLeft: 'auto', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {liveMode && dataSource.listings === 'mock' ? (
-            <span className="tag tag-neutral">Demo data</span>
-          ) : null}
-          {liveMode && dataSource.listings === 'live'
+          {liveMode
             ? `${listingTotal} rows · page ${listingPage} of ${Math.max(listingTotalPages, 1)}`
             : `${filtered.length} of ${rows.length} rows`}
         </div>
@@ -153,7 +150,7 @@ export function ListingsPage() {
           onSave={saveEdit}
           saveLabel="Save & log"
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-2col">
             <Field label="Price (₹)">
               <input className="input" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} inputMode="numeric" />
             </Field>

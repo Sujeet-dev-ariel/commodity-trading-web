@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { PAGES } from '../../data/mockData';
+import { PAGES } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
@@ -9,6 +9,20 @@ const PATH_TO_SCREEN: Record<string, string> = {
   dash: 'dash', users: 'users', listings: 'listings', negotiations: 'negotiations',
   trades: 'trades', settings: 'settings', audit: 'audit', freight: 'freight',
 };
+
+const SIDEBAR_KEY = 'kkpk-sidebar-collapsed';
+/** Below this width the sidebar auto-collapses (unless the user overrode it). */
+const AUTO_COLLAPSE_PX = 1360;
+
+function initialCollapsed(): boolean {
+  try {
+    const stored = localStorage.getItem(SIDEBAR_KEY);
+    if (stored != null) return stored === '1';
+  } catch {
+    /* private mode — fall through to auto */
+  }
+  return typeof window !== 'undefined' && window.innerWidth < AUTO_COLLAPSE_PX;
+}
 
 /**
  * Desktop console shell: sidebar + header + per-route page head + outlet.
@@ -21,6 +35,36 @@ export function AdminLayout() {
   const location = useLocation();
   const seg = location.pathname.split('/')[1] || 'dash';
   const page = PAGES[PATH_TO_SCREEN[seg] ?? 'dash'] ?? PAGES.dash;
+
+  // Collapsible sidebar: auto-collapses on narrower screens until the user
+  // picks a preference (persisted to localStorage).
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const userSet = useRef<boolean>(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(SIDEBAR_KEY) != null) userSet.current = true;
+    } catch {
+      /* ignore */
+    }
+    const mq = window.matchMedia(`(max-width: ${AUTO_COLLAPSE_PX}px)`);
+    const onChange = (e: MediaQueryListEvent) => {
+      if (!userSet.current) setCollapsed(e.matches);
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const toggleSidebar = () => {
+    userSet.current = true;
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(SIDEBAR_KEY, c ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !c;
+    });
+  };
 
   // Scroll to top on every navigation (new "page" per route).
   useEffect(() => {
@@ -60,12 +104,12 @@ export function AdminLayout() {
   };
 
   return (
-    <div className="admin-grid">
-      <Sidebar />
-      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Header />
-        <div className="content-pad" style={{ padding: '22px 28px 56px', display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
-          <div className="page-head" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+    <div className={`admin-grid${collapsed ? ' sidebar-collapsed' : ''}`}>
+      <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
+      <div className="admin-main">
+        <Header onToggleSidebar={toggleSidebar} sidebarCollapsed={collapsed} />
+        <div className="content-pad">
+          <div className="page-head">
             <div>
               <h1 style={{ fontSize: 23, marginBottom: 3 }}>{page[0]}</h1>
               <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{page[1]}</p>

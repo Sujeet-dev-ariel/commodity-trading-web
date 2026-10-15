@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { EmptyState, Field, FilterTag, Modal } from '../../components/common/controls';
-import { FREIGHT_STATES } from '../../data/mockData';
+import { FREIGHT_STATES } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { freightPrice } from '../../utils/format';
 
@@ -54,7 +54,7 @@ export function FreightPage() {
         </div>
       ) : null}
 
-      <div className="panel" style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px' }}>
+      <div className="panel filter-bar">
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {['All', ...FREIGHT_STATES].map((key) => (
             <FilterTag key={key} label={key} active={freightOriginFilter === key} onClick={() => setFreightOriginFilter(key)} />
@@ -106,7 +106,7 @@ export function FreightPage() {
 
       <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 640 }}>
         <div style={{ fontWeight: 700, fontSize: 14.5 }}>Add a route manually</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div className="form-3col">
           <Field label="Origin (state)">
             <select className="input" value={newFreightOrigin} onChange={(e) => setNewFreightOrigin(e.target.value)}>
               {FREIGHT_STATES.map((st) => (
@@ -121,7 +121,7 @@ export function FreightPage() {
             <input className="input" placeholder="e.g. 30-35 MT" value={newFreightCapacity} onChange={(e) => setNewFreightCapacity(e.target.value)} />
           </Field>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+        <div className="form-2col-auto">
           <Field label="Price low (₹/quintal)">
             <input className="input" type="number" min="0" value={newFreightLow} onChange={(e) => setNewFreightLow(e.target.value)} />
           </Field>
@@ -145,7 +145,7 @@ export function FreightPage() {
           onSave={saveFreightEdit}
           saveLabel="Save"
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-2col">
             <Field label="Price low (₹)">
               <input className="input" type="number" min="0" value={freightEditLow} onChange={(e) => setFreightEditLow(e.target.value)} />
             </Field>

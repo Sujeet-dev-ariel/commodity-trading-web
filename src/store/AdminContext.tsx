@@ -14,20 +14,10 @@ import type {
   Invite,
   ListingRow,
   Negotiation,
+  Trade,
   UserRecord,
 } from '../types';
-import {
-  FREIGHT_STATES,
-  SEED_AUDIT,
-  SEED_BROKERS,
-  SEED_FREIGHT,
-  SEED_INVITES,
-  SEED_NEGOTIATIONS,
-  SEED_ROWS,
-  SEED_TRADES,
-  SEED_USERS,
-  CATEGORIES as SEED_CATEGORIES,
-} from '../data/mockData';
+import { FREIGHT_STATES } from '../data/constants';
 import { ApiError } from '../services/api';
 import { authService, normalizePhone } from '../services/authService';
 import {
@@ -120,7 +110,7 @@ interface AdminState {
   nudge: () => void;
   relay: () => void;
 
-  trades: typeof SEED_TRADES;
+  trades: Trade[];
   exportCsv: (kind: 'trades' | 'listings' | 'generic', filename: string, rows: string[][]) => void;
 
   brokers: Broker[];
@@ -178,16 +168,9 @@ interface AdminState {
   addFreightRoute: () => void;
   uploadFreightSheet: () => void;
 
-  /* ----- live backend (no-ops in demo mode except where noted) ----- */
+  /* ----- live backend ----- */
   /** True when VITE_API_BASE_URL is set and routes hit the real backend. */
   liveMode: boolean;
-  /**
-   * Where each domain's visible data came from. In live mode every domain
-   * tries the backend first and falls back to mock data when the request
-   * fails OR returns nothing — pages badge the fallback so demo rows are
-   * never mistaken for backend rows.
-   */
-  dataSource: { invites: 'live' | 'mock'; listings: 'live' | 'mock'; settings: 'live' | 'mock' };
   invitesLoading: boolean;
   invitesError: string | null;
   refreshInvites: () => Promise<void>;
@@ -284,9 +267,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
-  const [users, setUsers] = useState<UserRecord[]>(SEED_USERS);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [userFilter, setUserFilter] = useState('all');
-  const [invites, setInvites] = useState<Invite[]>(SEED_INVITES);
+  const [invites, setInvites] = useState<Invite[]>([]);
   const [inviteePhone, setInviteePhone] = useState('');
   const [inviteeFirm, setInviteeFirm] = useState('');
   const [inviteBuyer, setInviteBuyer] = useState(true);
@@ -294,7 +277,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [invitePaymentTerms, setInvitePaymentTerms] = useState('10-15 days');
   const [inviteError, setInviteError] = useState<string | null>(null);
 
-  const [rows, setRows] = useState<ListingRow[]>(SEED_ROWS);
+  const [rows, setRows] = useState<ListingRow[]>([]);
   const [sideFilter, setSideFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('All categories');
   const [statusFilter, setStatusFilter] = useState('All statuses');
@@ -304,26 +287,34 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [editReason, setEditReason] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
-  const [negotiations, setNegotiations] = useState<Negotiation[]>(SEED_NEGOTIATIONS);
+  const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
   const [negoFilter, setNegoFilter] = useState<'active' | 'done'>('active');
-  const [selectedNegoId, setSelectedNegoId] = useState(3);
+  const [selectedNegoId, setSelectedNegoId] = useState(0);
   const [nudgeMessage, setNudgeMessage] = useState('');
   const [relayPrice, setRelayPrice] = useState('');
   const [relaySide, setRelaySide] = useState<'as Seller' | 'as Buyer'>('as Seller');
 
-  const [brokers, setBrokers] = useState<Broker[]>(SEED_BROKERS);
-  const [categories, setCategories] = useState<string[]>(SEED_CATEGORIES);
+  // No trades endpoint on the backend yet — closed trades are recorded here
+  // once the trade flow exists. Starts empty; never seeded.
+  const [trades] = useState<Trade[]>([]);
+
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [expiryTime, setExpiryTime] = useState('02:00');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('10-15 days');
 
-  const [audit, setAudit] = useState<AuditEntry[]>(SEED_AUDIT);
+  // Session-local audit trail (no audit-log endpoint on the backend yet).
+  // Starts empty; entries are appended as the admin acts this session.
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditAdmin, setAuditAdmin] = useState('All admins');
   const [auditAction, setAuditAction] = useState('All actions');
   const [auditQuery, setAuditQuery] = useState('');
 
-  const [freightRoutes, setFreightRoutes] = useState<FreightRoute[]>(SEED_FREIGHT);
+  // No freight endpoint on the backend yet — routes entered here live in
+  // local state only. Starts empty; never seeded.
+  const [freightRoutes, setFreightRoutes] = useState<FreightRoute[]>([]);
   const [freightOriginFilter, setFreightOriginFilter] = useState('All');
   const [freightStatusFilter, setFreightStatusFilter] = useState('All statuses');
   const [freightEditId, setFreightEditId] = useState<number | null>(null);
@@ -340,11 +331,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   /* ----- live backend state (used only when VITE_API_BASE_URL is set) ----- */
   const [liveMode] = useState(() => !authService.isDemoMode());
-  const [dataSource, setDataSource] = useState<{ invites: 'live' | 'mock'; listings: 'live' | 'mock'; settings: 'live' | 'mock' }>({
-    invites: 'mock',
-    listings: 'mock',
-    settings: 'mock',
-  });
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [invitesError, setInvitesError] = useState<string | null>(null);
   const [listingsLoading, setListingsLoading] = useState(false);
@@ -391,7 +377,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
      the UI additionally gates on the session's roles (see RequireAdmin)
      and surfaces backend 403s honestly. Endpoints the backend does not
      expose (user directory/suspend, negotiations, trades, freight, audit
-     log, brokers) intentionally keep local state — see final report. */
+     log, brokers) intentionally keep local state, starting empty — the
+     console never shows invented rows. */
   const liveCategoriesRef = useRef<BackendCategory[]>([]);
 
   const liveErr = (e: unknown, fallback: string) =>
@@ -410,26 +397,17 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (!liveMode) return;
     setInvitesLoading(true);
     setInvitesError(null);
-    const useMock = () => {
-      setInvites(SEED_INVITES);
-      setDataSource((prev) => ({ ...prev, invites: 'mock' }));
-    };
     try {
       const { data } = await invitesApi.list({ status: 'pending', limit: 100 });
-      if (!data.length) {
-        useMock();
-        return;
-      }
       setInvites(data.map((inv, i) => ({
         id: i + 1,
         backendId: inv.id,
         firm: inv.phone,
         meta: `${inv.roleHint} · invited ${new Date(inv.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
       })));
-      setDataSource((prev) => ({ ...prev, invites: 'live' }));
     } catch (e) {
-      useMock();
-      setInvitesError(liveErr(e, 'Backend unreachable — showing demo invites.'));
+      setInvites([]);
+      setInvitesError(liveErr(e, 'Could not load invites from the backend.'));
     } finally {
       setInvitesLoading(false);
     }
@@ -439,12 +417,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (!liveMode) return;
     setListingsLoading(true);
     setListingsError(null);
-    const useMock = () => {
-      setRows(SEED_ROWS);
-      setListingTotal(0);
-      setListingTotalPages(0);
-      setDataSource((prev) => ({ ...prev, listings: 'mock' }));
-    };
     try {
       const cats = await ensureCategories();
       const nameOf = (id: string) => cats.find((c) => c.id === id)?.name ?? '—';
@@ -470,16 +442,19 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         data.forEach((b, i) => combined.push(mapBackendListing(b, combined.length + i, nameOf)));
       }
       if (!total) {
-        useMock();
+        setRows([]);
+        setListingTotal(0);
+        setListingTotalPages(0);
         return;
       }
       setRows(combined);
       setListingTotal(total);
       setListingTotalPages(pages);
-      setDataSource((prev) => ({ ...prev, listings: 'live' }));
     } catch (e) {
-      useMock();
-      setListingsError(liveErr(e, 'Backend unreachable — showing demo listings.'));
+      setRows([]);
+      setListingTotal(0);
+      setListingTotalPages(0);
+      setListingsError(liveErr(e, 'Could not load listings from the backend.'));
     } finally {
       setListingsLoading(false);
     }
@@ -499,10 +474,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         if (!(e instanceof ApiError && e.status === 404)) throw e;
       }
       await ensureCategories();
-      setDataSource((prev) => ({ ...prev, settings: 'live' }));
     } catch (e) {
-      setSettingsError(liveErr(e, 'Backend unreachable — showing demo settings.'));
-      setDataSource((prev) => ({ ...prev, settings: 'mock' }));
+      setSettingsError(liveErr(e, 'Could not load settings from the backend.'));
     } finally {
       setSettingsLoading(false);
     }
@@ -1023,7 +996,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, [newFreightDest, newFreightLow, newFreightHigh, newFreightCapacity, newFreightOrigin, flash]);
 
   const uploadFreightSheet = useCallback(() => {
-    flash('Freight sheet parsed — review the highlighted routes before publishing');
+    flash('Sheet upload is not wired to a backend endpoint yet — add routes manually below');
   }, [flash]);
 
   const value = useMemo<AdminState>(() => ({
@@ -1040,7 +1013,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     negotiations, negoFilter, setNegoFilter, selectedNegoId, selectNego,
     nudgeMessage, setNudgeMessage, relayPrice, setRelayPrice, relaySide, setRelaySide,
     nudge, relay,
-    trades: SEED_TRADES, exportCsv,
+    trades, exportCsv,
     brokers, removeBroker, addBroker,
     categories, addCategory, newCategory, setNewCategory,
     expiryTime, setExpiryTime, timezone, setTimezone,
@@ -1056,7 +1029,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     newFreightLow, setNewFreightLow, newFreightHigh, setNewFreightHigh,
     newFreightCapacity, setNewFreightCapacity, newFreightError, addFreightRoute,
     uploadFreightSheet,
-    liveMode, dataSource,
+    liveMode,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
     listingTotal, listingTotalPages, refreshListings,
@@ -1072,7 +1045,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
     editPrice, editWeight, editReason, editError, saveEdit, forceExpire,
     negotiations, negoFilter, selectedNegoId, selectNego,
-    nudgeMessage, relayPrice, relaySide, nudge, relay, exportCsv,
+    nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv,
     brokers, removeBroker, addBroker, categories, addCategory, newCategory,
     expiryTime, timezone, defaultPaymentTerms, saveSettings,
     audit, auditAdmin, auditAction, auditQuery,
@@ -1081,7 +1054,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     freightEditLow, freightEditHigh, freightEditCapacity, freightEditError, saveFreightEdit,
     removeFreightRoute, newFreightOrigin, newFreightDest, newFreightLow, newFreightHigh,
     newFreightCapacity, newFreightError, addFreightRoute, uploadFreightSheet,
-    liveMode, dataSource,
+    liveMode,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
     listingTotal, listingTotalPages, refreshListings,
