@@ -34,7 +34,7 @@ export interface SessionUser {
   firm: string;
 }
 
-export const OTP_LENGTH = 6;
+export const OTP_LENGTH = 4;
 export const OTP_TTL_MS = 5 * 60 * 1000;
 export const RESEND_COOLDOWN_S = 30;
 
@@ -56,7 +56,7 @@ export function isValidPhone(raw: string): boolean {
 }
 
 export function isValidOtpLive(code: string): boolean {
-  return /^\d{4,6}$/.test(code.trim());
+  return new RegExp(`^\\d{${OTP_LENGTH}}$`).test(code.trim());
 }
 
 function lookupDemoAdmin(phone: string): SessionUser {
@@ -75,20 +75,45 @@ function lookupDemoAdmin(phone: string): SessionUser {
 }
 
 function toSessionUser(u: PersistedUser): SessionUser {
-  const digits = u.phone.replace(/\D/g, '').slice(-10);
-  const isAdmin = u.roles.includes('admin');
-  const label = u.roles.includes('admin') && u.roles.length === 1 ? 'Primary admin'
-    : u.roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(', ') || 'Admin';
+  // Defensive defaults: the backend contract says these fields exist, but a
+  // sloppy proxy or future API change shouldn't white-screen the console.
+  const phoneRaw = typeof u.phone === 'string' ? u.phone : '';
+  const roles = Array.isArray(u.roles) ? u.roles.filter((r): r is string => typeof r === 'string') : [];
+  const digits = phoneRaw.replace(/\D/g, '').slice(-10);
+  const isAdmin = roles.includes('admin');
+  const label = isAdmin && roles.length === 1 ? 'Primary admin'
+    : roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(', ') || 'Admin';
+  const name = (typeof u.name === 'string' && u.name.trim()) || (typeof u.firmName === 'string' ? u.firmName : '') || digits || 'Admin';
   return {
-    id: u.id,
-    phone: digits || u.phone,
-    name: (u.name && u.name.trim()) || u.firmName || digits || 'Admin',
+    id: typeof u.id === 'string' ? u.id : `unknown-${Date.now()}`,
+    phone: digits || phoneRaw,
+    name,
     role: isAdmin && !u.name ? 'Primary admin' : label,
-    roles: u.roles,
-    firm: u.firmName ?? '',
+    roles,
+    firm: typeof u.firmName === 'string' ? u.firmName : '',
   };
 }
 
+function isSessionUser(value: unknown): value is SessionUser {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.phone === 'string' &&
+    typeof v.name === 'string' &&
+    typeof v.role === 'string' &&
+    Array.isArray(v.roles) &&
+    typeof v.firm === 'string'
+  );
+}
+
+function discardDemoSession() {
+  try {
+    localStorage.removeItem(DEMO_SESSION_KEY);
+  } catch {
+    /* storage unavailable — nothing to discard */
+  }
+}
 function readDemoPending(): DemoPending | null {
   try {
     const raw = localStorage.getItem(DEMO_PENDING_KEY);
@@ -106,12 +131,25 @@ export const authService = {
       const s = loadSession();
       return s ? toSessionUser(s.user) : null;
     }
+    let raw: string | null;
     try {
-      const raw = localStorage.getItem(DEMO_SESSION_KEY);
-      return raw ? (JSON.parse(raw) as SessionUser) : null;
+      raw = localStorage.getItem(DEMO_SESSION_KEY);
     } catch {
       return null;
     }
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      discardDemoSession();
+      return null;
+    }
+    if (!isSessionUser(parsed)) {
+      discardDemoSession();
+      return null;
+    }
+    return parsed;
   },
 
   /**
@@ -126,7 +164,7 @@ export const authService = {
       await authApi.login(toE164Indian(normalized));
       return { demoCode: null };
     }
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(Math.floor(1000 + Math.random() * 9000));
     const pending: DemoPending = { phone: normalized, code, expiresAt: Date.now() + OTP_TTL_MS };
     localStorage.setItem(DEMO_PENDING_KEY, JSON.stringify(pending));
     return { demoCode: code };
@@ -136,7 +174,7 @@ export const authService = {
     const normalized = normalizePhone(phoneDigits);
     const trimmed = code.trim();
     if (isBackendConfigured()) {
-      if (!isValidOtpLive(trimmed)) throw new Error('Enter the 4–6 digit code.');
+      if (!isValidOtpLive(trimmed)) throw new Error('Enter the 4-digit code.');
       const res = await authApi.verifyOtp(toE164Indian(normalized), trimmed);
       saveSession({ accessToken: res.accessToken, refreshToken: res.refreshToken, user: res.user });
       return toSessionUser(res.user);

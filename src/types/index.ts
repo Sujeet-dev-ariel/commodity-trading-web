@@ -10,14 +10,10 @@ export type ScreenKey =
   | 'audit'
   | 'freight';
 
-export type Viewport = 'desktop' | 'mobile';
-export type MobileScreen = 'dash' | 'negotiations' | 'users';
-
 export interface NavItem {
   key: ScreenKey;
   label: string;
   badge: string;
-  mobile: boolean;
 }
 
 export interface UserRecord {

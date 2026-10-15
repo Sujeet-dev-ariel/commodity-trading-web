@@ -16,7 +16,7 @@ export function ListingsPage() {
     openEdit, forceExpire, editId, editPrice, setEditPrice, editWeight, setEditWeight,
     editReason, setEditReason, editError, closeEdit, saveEdit, searchQuery,
     liveMode, listingsLoading, listingsError, listingPage, setListingPage,
-    listingTotal, listingTotalPages, refreshListings, categories,
+    listingTotal, listingTotalPages, refreshListings, categories, dataSource,
   } = admin;
 
   // Live backend: admin sessions read every user's rows via GET /listings
@@ -71,8 +71,13 @@ export function ListingsPage() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <div className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
-          {liveMode ? `${listingTotal} rows · page ${listingPage} of ${Math.max(listingTotalPages, 1)}` : `${filtered.length} of ${rows.length} rows`}
+        <div className="text-muted" style={{ marginLeft: 'auto', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {liveMode && dataSource.listings === 'mock' ? (
+            <span className="tag tag-neutral">Demo data</span>
+          ) : null}
+          {liveMode && dataSource.listings === 'live'
+            ? `${listingTotal} rows · page ${listingPage} of ${Math.max(listingTotalPages, 1)}`
+            : `${filtered.length} of ${rows.length} rows`}
         </div>
       </div>
 

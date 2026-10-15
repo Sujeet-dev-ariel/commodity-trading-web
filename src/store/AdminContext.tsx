@@ -13,10 +13,8 @@ import type {
   FreightRoute,
   Invite,
   ListingRow,
-  MobileScreen,
   Negotiation,
   UserRecord,
-  Viewport,
 } from '../types';
 import {
   FREIGHT_STATES,
@@ -61,10 +59,6 @@ function nextExpiryCountdown(): string {
 }
 
 interface AdminState {
-  viewport: Viewport;
-  setViewport: (v: Viewport) => void;
-  mobileScreen: MobileScreen;
-  setMobileScreen: (s: MobileScreen) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   countdown: string;
@@ -187,6 +181,13 @@ interface AdminState {
   /* ----- live backend (no-ops in demo mode except where noted) ----- */
   /** True when VITE_API_BASE_URL is set and routes hit the real backend. */
   liveMode: boolean;
+  /**
+   * Where each domain's visible data came from. In live mode every domain
+   * tries the backend first and falls back to mock data when the request
+   * fails OR returns nothing — pages badge the fallback so demo rows are
+   * never mistaken for backend rows.
+   */
+  dataSource: { invites: 'live' | 'mock'; listings: 'live' | 'mock'; settings: 'live' | 'mock' };
   invitesLoading: boolean;
   invitesError: string | null;
   refreshInvites: () => Promise<void>;
@@ -278,8 +279,6 @@ function mapBackendListing(b: BackendListing, index: number, categoryName: (id: 
 }
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
-  const [viewport, setViewport] = useState<Viewport>('desktop');
-  const [mobileScreen, setMobileScreen] = useState<MobileScreen>('dash');
   const [searchQuery, setSearchQuery] = useState('');
   const [countdown, setCountdown] = useState(nextExpiryCountdown);
   const [toast, setToast] = useState<string | null>(null);
@@ -341,6 +340,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   /* ----- live backend state (used only when VITE_API_BASE_URL is set) ----- */
   const [liveMode] = useState(() => !authService.isDemoMode());
+  const [dataSource, setDataSource] = useState<{ invites: 'live' | 'mock'; listings: 'live' | 'mock'; settings: 'live' | 'mock' }>({
+    invites: 'mock',
+    listings: 'mock',
+    settings: 'mock',
+  });
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [invitesError, setInvitesError] = useState<string | null>(null);
   const [listingsLoading, setListingsLoading] = useState(false);
@@ -406,16 +410,26 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (!liveMode) return;
     setInvitesLoading(true);
     setInvitesError(null);
+    const useMock = () => {
+      setInvites(SEED_INVITES);
+      setDataSource((prev) => ({ ...prev, invites: 'mock' }));
+    };
     try {
       const { data } = await invitesApi.list({ status: 'pending', limit: 100 });
+      if (!data.length) {
+        useMock();
+        return;
+      }
       setInvites(data.map((inv, i) => ({
         id: i + 1,
         backendId: inv.id,
         firm: inv.phone,
         meta: `${inv.roleHint} · invited ${new Date(inv.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
       })));
+      setDataSource((prev) => ({ ...prev, invites: 'live' }));
     } catch (e) {
-      setInvitesError(liveErr(e, 'Could not load invites.'));
+      useMock();
+      setInvitesError(liveErr(e, 'Backend unreachable — showing demo invites.'));
     } finally {
       setInvitesLoading(false);
     }
@@ -425,6 +439,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (!liveMode) return;
     setListingsLoading(true);
     setListingsError(null);
+    const useMock = () => {
+      setRows(SEED_ROWS);
+      setListingTotal(0);
+      setListingTotalPages(0);
+      setDataSource((prev) => ({ ...prev, listings: 'mock' }));
+    };
     try {
       const cats = await ensureCategories();
       const nameOf = (id: string) => cats.find((c) => c.id === id)?.name ?? '—';
@@ -449,11 +469,17 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         pages = Math.max(pages, meta?.totalPages ?? 1);
         data.forEach((b, i) => combined.push(mapBackendListing(b, combined.length + i, nameOf)));
       }
+      if (!total) {
+        useMock();
+        return;
+      }
       setRows(combined);
       setListingTotal(total);
       setListingTotalPages(pages);
+      setDataSource((prev) => ({ ...prev, listings: 'live' }));
     } catch (e) {
-      setListingsError(liveErr(e, 'Could not load listings.'));
+      useMock();
+      setListingsError(liveErr(e, 'Backend unreachable — showing demo listings.'));
     } finally {
       setListingsLoading(false);
     }
@@ -473,8 +499,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         if (!(e instanceof ApiError && e.status === 404)) throw e;
       }
       await ensureCategories();
+      setDataSource((prev) => ({ ...prev, settings: 'live' }));
     } catch (e) {
-      setSettingsError(liveErr(e, 'Could not load settings.'));
+      setSettingsError(liveErr(e, 'Backend unreachable — showing demo settings.'));
+      setDataSource((prev) => ({ ...prev, settings: 'mock' }));
     } finally {
       setSettingsLoading(false);
     }
@@ -999,7 +1027,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, [flash]);
 
   const value = useMemo<AdminState>(() => ({
-    viewport, setViewport, mobileScreen, setMobileScreen,
     searchQuery, setSearchQuery, countdown, toast, flash,
     users, userFilter, setUserFilter, suspendUser, editRoles,
     invites, revokeInvite,
@@ -1029,7 +1056,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     newFreightLow, setNewFreightLow, newFreightHigh, setNewFreightHigh,
     newFreightCapacity, setNewFreightCapacity, newFreightError, addFreightRoute,
     uploadFreightSheet,
-    liveMode,
+    liveMode, dataSource,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
     listingTotal, listingTotalPages, refreshListings,
@@ -1039,7 +1066,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     addCommodity, renameCommodity, deleteCommodity,
     tosVersions, tosVersionsLoading, tosVersionsError, refreshTosVersions, publishTosVersion,
   }), [
-    viewport, mobileScreen, searchQuery, countdown, toast, flash,
+    searchQuery, countdown, toast, flash,
     users, userFilter, suspendUser, editRoles, invites, revokeInvite,
     inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, invitePaymentTerms, inviteError, sendInvite,
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
@@ -1054,7 +1081,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     freightEditLow, freightEditHigh, freightEditCapacity, freightEditError, saveFreightEdit,
     removeFreightRoute, newFreightOrigin, newFreightDest, newFreightLow, newFreightHigh,
     newFreightCapacity, newFreightError, addFreightRoute, uploadFreightSheet,
-    liveMode,
+    liveMode, dataSource,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
     listingTotal, listingTotalPages, refreshListings,

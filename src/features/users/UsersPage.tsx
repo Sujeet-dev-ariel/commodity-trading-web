@@ -22,7 +22,7 @@ export function UsersPage() {
     invites, revokeInvite, inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
     inviteBuyer, toggleInviteBuyer, inviteSeller, toggleInviteSeller,
     invitePaymentTerms, setInvitePaymentTerms, inviteError, sendInvite, searchQuery,
-    liveMode, invitesLoading, invitesError, refreshInvites,
+    liveMode, invitesLoading, invitesError, refreshInvites, dataSource,
   } = admin;
 
   // Live backend: invites come from GET /invites (admin or broker role).
@@ -41,13 +41,6 @@ export function UsersPage() {
   return (
     <div className="users-split" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: 18, alignItems: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-        {liveMode ? (
-          <div className="callout-info">
-            Connected to the backend. The user table below is local demo data — the API exposes
-            only <strong>GET /users/me</strong> (no user-list or suspend endpoint yet). Invites on
-            the right are live (<strong>GET/POST /invites</strong>, admin&nbsp;or&nbsp;broker).
-          </div>
-        ) : null}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {FILTERS.map((f) => (
             <FilterTag key={f.key} label={f.label} active={userFilter === f.key} onClick={() => setUserFilter(f.key)} />
@@ -141,8 +134,11 @@ export function UsersPage() {
         </div>
 
         <div className="panel">
-          <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-200)', fontWeight: 700, fontSize: 14.5 }}>
+          <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-200)', fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 8 }}>
             Pending invites
+            {liveMode && dataSource.invites === 'mock' ? (
+              <span className="tag tag-neutral" style={{ fontWeight: 400 }}>Demo data</span>
+            ) : null}
           </div>
           {invitesLoading ? <div className="text-muted" style={{ padding: '18px 16px', fontSize: 13 }}>Loading invites…</div> : null}
           {invitesError ? <div className="field-error" style={{ padding: '12px 16px 0' }}>{invitesError}</div> : null}

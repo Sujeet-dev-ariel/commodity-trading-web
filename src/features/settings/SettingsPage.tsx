@@ -10,7 +10,7 @@ export function SettingsPage() {
     categories, newCategory, setNewCategory, addCategory,
     expiryTime, setExpiryTime, timezone,
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
-    liveMode, settingsLoading, settingsError, refreshLiveSettings,
+    liveMode, settingsLoading, settingsError, refreshLiveSettings, dataSource,
     liveCategories, categoryError, renameCategory, deleteCategory,
     liveCommodities, commoditiesLoading, commodityError, refreshCommodities,
     addCommodity, renameCommodity, deleteCommodity,
@@ -89,7 +89,12 @@ export function SettingsPage() {
         ) : null}
         {settingsError ? <div className="field-error">{settingsError}</div> : null}
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Price expiry {settingsLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Price expiry {settingsLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
+            {liveMode && dataSource.settings === 'mock' ? (
+              <span className="tag tag-neutral" style={{ fontWeight: 400 }}>Demo data</span>
+            ) : null}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <Field label="Expires daily at">
               <input className="input" type="time" value={expiryTime} onChange={(e) => setExpiryTime(e.target.value)} />
@@ -179,7 +184,12 @@ export function SettingsPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Commodity taxonomy</div>
+          <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Commodity taxonomy
+            {liveMode && dataSource.settings === 'mock' ? (
+              <span className="tag tag-neutral" style={{ fontWeight: 400 }}>Demo data</span>
+            ) : null}
+          </div>
           <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
             Categories and items available across the platform. Editing here keeps the product
             commodity-agnostic without a code release.

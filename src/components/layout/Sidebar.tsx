@@ -3,7 +3,7 @@ import { NAV } from '../../data/mockData';
 import { useAdmin } from '../../store/AdminContext';
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { freightRoutes, setViewport, viewport } = useAdmin();
+  const { freightRoutes } = useAdmin();
   const pending = freightRoutes.filter((r) => r.status === 'Pending review').length;
 
   const navStyle = (active: boolean): React.CSSProperties => ({
@@ -13,13 +13,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     ...(active
       ? { background: 'var(--color-accent-700)', fontWeight: 600, color: '#ffffff' }
       : { color: 'var(--color-accent-200)' }),
-  });
-  const vpStyle = (active: boolean): React.CSSProperties => ({
-    flex: 1, textAlign: 'center', padding: '7px 0', borderRadius: 6, fontSize: 12,
-    cursor: 'pointer', border: 0, font: 'inherit',
-    ...(active
-      ? { background: 'var(--color-accent-600)', color: '#ffffff', fontWeight: 600 }
-      : { background: 'var(--color-accent-800)', color: 'var(--color-accent-200)' }),
   });
 
   return (
@@ -43,18 +36,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           return (
             <NavLink
               key={n.key}
-              to={`/${n.key === 'dash' ? 'dash' : n.key}`}
+              to={`/${n.key}`}
               onClick={onNavigate}
               style={({ isActive }) => navStyle(isActive)}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                <span style={{
-                  width: 6, height: 6, borderRadius: 999, flex: 'none',
-                  background: n.mobile ? 'var(--color-accent-2-500)' : 'transparent',
-                }}
-                />
-                <span>{n.label}</span>
-              </span>
+              <span>{n.label}</span>
               <span style={showBadge
                 ? {
                   background: 'var(--color-accent-2-600)', color: '#062b40',
@@ -68,25 +54,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
-      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5,
-          color: 'var(--color-accent-300)', padding: '0 6px',
-        }}
-        >
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-accent-2-500)' }} />
-          <span>MOBILE-ESSENTIAL SECTION</span>
-        </div>
-        <div style={{ padding: '0 6px' }}>
-          <div style={{ fontSize: 10.5, letterSpacing: '.12em', color: 'var(--color-accent-300)', marginBottom: 6 }}>
-            PREVIEW AS
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button style={vpStyle(viewport === 'desktop')} onClick={() => setViewport('desktop')}>Desktop</button>
-            <button style={vpStyle(viewport === 'mobile')} onClick={() => setViewport('mobile')}>Mobile</button>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

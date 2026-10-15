@@ -20,14 +20,14 @@ import type {
 export const CATEGORIES = ['Besan', 'Dal', 'Matar', 'Chana', 'Rajma', 'Rice'];
 
 export const NAV: NavItem[] = [
-  { key: 'dash', label: 'Dashboard', badge: '', mobile: true },
-  { key: 'users', label: 'Users', badge: '3', mobile: true },
-  { key: 'listings', label: 'Listings', badge: '', mobile: false },
-  { key: 'negotiations', label: 'Negotiations', badge: '4', mobile: true },
-  { key: 'trades', label: 'Trades & brokerage', badge: '', mobile: false },
-  { key: 'settings', label: 'Settings', badge: '', mobile: false },
-  { key: 'audit', label: 'Audit log', badge: '', mobile: false },
-  { key: 'freight', label: 'Freight', badge: '', mobile: false },
+  { key: 'dash', label: 'Dashboard', badge: '' },
+  { key: 'users', label: 'Users', badge: '3' },
+  { key: 'listings', label: 'Listings', badge: '' },
+  { key: 'negotiations', label: 'Negotiations', badge: '4' },
+  { key: 'trades', label: 'Trades & brokerage', badge: '' },
+  { key: 'settings', label: 'Settings', badge: '' },
+  { key: 'audit', label: 'Audit log', badge: '' },
+  { key: 'freight', label: 'Freight', badge: '' },
 ];
 
 export const PAGES: Record<string, [string, string, string]> = {

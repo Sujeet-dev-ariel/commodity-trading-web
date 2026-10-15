@@ -27,6 +27,8 @@ export function LoginPage() {
   const [code, setCode] = useState('');
   const [demoCode, setDemoCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
@@ -38,7 +40,16 @@ export function LoginPage() {
 
   if (user) return <Navigate to={from} replace />;
 
+  const setDigits = (raw: string) => {
+    setPhone(raw.replace(/\D/g, '').slice(0, 10));
+    setError(null);
+  };
+  // Display grouping: 98108 71966. Stored state stays digits-only.
+  const grouped = phone.length > 5 ? `${phone.slice(0, 5)} ${phone.slice(5)}` : phone;
+  const showPhoneError = (touched || submitAttempted) && !isValidPhone(phone);
+
   const sendCode = async () => {
+    setSubmitAttempted(true);
     if (!isValidPhone(phone)) {
       setError('Enter a valid 10-digit mobile number.');
       return;
@@ -90,29 +101,41 @@ export function LoginPage() {
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {step === 'phone' ? (
             <>
-              <Field label="Mobile number" error={error}>
+              <Field
+                label="Mobile number"
+                error={error ?? (showPhoneError ? 'Enter a valid 10-digit mobile number.' : null)}
+              >
                 <div style={{ display: 'flex', gap: 7 }}>
                   <div className="input" style={{ width: 52, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>+91</div>
                   <input
                     className="input"
-                    placeholder="98xxx xxxxx"
-                    value={phone}
-                    onChange={(e) => { setPhone(e.target.value); setError(null); }}
+                    placeholder="98108 71966"
+                    value={grouped}
+                    onChange={(e) => setDigits(e.target.value)}
+                    onBlur={() => setTouched(true)}
                     onKeyDown={(e) => { if (e.key === 'Enter') void sendCode(); }}
-                    inputMode="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={11}
                     autoFocus
                     style={{ minHeight: 44 }}
+                    aria-invalid={showPhoneError || undefined}
                   />
                 </div>
               </Field>
-              <button className="btn btn-primary btn-block" onClick={() => void sendCode()} disabled={busy} style={{ minHeight: 44, fontSize: 14 }}>
+              <button
+                className="btn btn-primary btn-block"
+                onClick={() => void sendCode()}
+                disabled={busy}
+                style={{ minHeight: 44, fontSize: 14 }}
+              >
                 {busy ? 'Sending…' : 'Send OTP'}
               </button>
             </>
           ) : (
             <>
               <div style={{ fontSize: 13 }}>
-                Code sent to <strong>+91 {phone.replace(/\D/g, '').slice(-10)}</strong>.{' '}
+                Code sent to <strong>+91 {grouped}</strong>.{' '}
                 <button
                   className="btn btn-ghost"
                   style={{ fontSize: 13, padding: 0 }}
@@ -121,10 +144,10 @@ export function LoginPage() {
                   Change number
                 </button>
               </div>
-              <Field label={isLive ? '4–6 digit code' : `${OTP_LENGTH}-digit code`} error={error}>
+              <Field label="4-digit code" error={error}>
                 <input
                   className="input"
-                  placeholder="••••••"
+                  placeholder="••••"
                   value={code}
                   onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH)); setError(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') void submitCode(); }}

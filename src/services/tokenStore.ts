@@ -22,13 +22,54 @@ export interface PersistedUser {
 
 const SESSION_KEY = 'kkpk_admin_session';
 
-export function loadSession(): PersistedSession | null {
+/**
+ * Runtime shape guard. localStorage outlives our code — entries written by
+ * older builds (or hand-edited by users) must never crash the boot path.
+ * Anything that isn't a well-formed session is discarded (self-heal).
+ */
+function isPersistedSession(value: unknown): value is PersistedSession {
+  if (!value || typeof value !== 'object') return false;
+  const s = value as Record<string, unknown>;
+  const user = s.user as Record<string, unknown> | null;
+  return (
+    typeof s.accessToken === 'string' &&
+    s.accessToken.length > 0 &&
+    typeof s.refreshToken === 'string' &&
+    !!user &&
+    typeof user === 'object' &&
+    typeof user.phone === 'string' &&
+    Array.isArray(user.roles)
+  );
+}
+
+function discardCorruptSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as PersistedSession) : null;
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* storage unavailable (private mode) — nothing to discard */
+  }
+}
+
+export function loadSession(): PersistedSession | null {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(SESSION_KEY);
   } catch {
     return null;
   }
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    discardCorruptSession();
+    return null;
+  }
+  if (!isPersistedSession(parsed)) {
+    discardCorruptSession();
+    return null;
+  }
+  return parsed;
 }
 
 export function saveSession(session: PersistedSession) {
