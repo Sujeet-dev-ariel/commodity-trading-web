@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-ssr/
+
+# env (real values — never commit; see .env.example)
+.env
+.env.local
+.env.*.local
+
+# logs / editor
+npm-debug.log*
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json

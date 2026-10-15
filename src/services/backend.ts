@@ -1,0 +1,261 @@
+/**
+ * Typed client for every backend route (D:\Tradding_backend\routes),
+ * verified against the route/controller/service sources.
+ *
+ * Admin-only story: the backend enforces admin access server-side via
+ * `requireRole(['admin'])` (middleware/auth.js). This module marks each
+ * function with the roles the backend requires so the UI can:
+ *  - call admin routes only for admin sessions (see RequireAdmin in App.tsx),
+ *  - surface 403s honestly instead of inventing endpoints.
+ *
+ * Routes with NO backend endpoint keep using local state/mock data and are
+ * listed in the final report (negotiations, trades, freight, audit log,
+ * user directory, brokers). Nothing here invents an endpoint.
+ */
+import { api, buildQuery } from './api';
+
+/* ---------- shared ---------- */
+
+/** Backend stores phones as +91XXXXXXXXXX (lib/validators.js). */
+export function toE164Indian(digits10: string): string {
+  return `+91${digits10}`;
+}
+
+/* ---------- auth (routes/auth.js — public) ---------- */
+
+export interface BackendUser {
+  id: string;
+  phone: string;
+  name: string | null;
+  firmName: string | null;
+  roles: string[];
+  status: string;
+  city: string | null;
+  tosAcceptedVersion: number | null;
+  tosAcceptedAt: string | null;
+}
+
+export interface VerifyOtpResult {
+  accessToken: string;
+  refreshToken: string;
+  user: BackendUser;
+}
+
+export const authApi = {
+  /** POST /auth/login { phone } — sends the OTP (dev backend: code is 1111). */
+  login: (phoneE164: string) =>
+    api.post<{ message: string }>('/auth/login', { phone: phoneE164 }),
+  /** POST /auth/verify-otp { phone, otp } — note the field is `otp`. */
+  verifyOtp: (phoneE164: string, otp: string) =>
+    api.post<VerifyOtpResult>('/auth/verify-otp', { phone: phoneE164, otp }),
+  /** POST /auth/logout { refreshToken } — revokes the token server-side. */
+  logout: (refreshToken: string) =>
+    api.post<{ message: string }>('/auth/logout', { refreshToken }),
+};
+
+/* ---------- invites (routes/invites.js — admin OR broker) ---------- */
+
+export type RoleHint = 'buyer' | 'seller';
+
+export interface BackendInvite {
+  id: string;
+  phone: string;
+  roleHint: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  invitedById: string | null;
+  createdAt: string;
+}
+
+export interface InviteFilters {
+  status?: string;
+  phone?: string;
+  roleHint?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const invitesApi = {
+  /** GET /invites?status=&phone=&roleHint=&page=&limit= */
+  list: (f: InviteFilters = {}) =>
+    api.getPage<BackendInvite[]>(`/invites${buildQuery({
+      status: f.status, phone: f.phone, roleHint: f.roleHint,
+      page: f.page, limit: f.limit,
+    })}`),
+  /** POST /invites { phone, roleHint: 'buyer'|'seller' } */
+  send: (phoneE164: string, roleHint: RoleHint) =>
+    api.post<BackendInvite>('/invites', { phone: phoneE164, roleHint }),
+  /** PATCH /invites/:id/cancel */
+  cancel: (id: string) =>
+    api.patch<BackendInvite>(`/invites/${id}/cancel`, {}),
+};
+
+/* ---------- listings (routes/listings.js — authenticated + ToS gate) ---------- */
+
+export type BackendListingSide = 'SELL' | 'BUY';
+export type BackendListingStatus = 'active' | 'price_expired' | 'na' | 'withdrawn' | 'traded';
+
+export interface BackendListingUser {
+  id?: string;
+  name: string | null;
+  firmName: string | null;
+  phone?: string;
+  city?: string | null;
+  roles?: string[];
+}
+
+export interface BackendListing {
+  id: string;
+  side: BackendListingSide;
+  userId: string;
+  categoryId: string;
+  commodityId: string;
+  itemName: string;
+  quality: string | null;
+  quantityBags: number | null;
+  weightKg: number | null;
+  price: number | null;
+  currency: string;
+  status: BackendListingStatus;
+  priceValidUntil: string | null;
+  paymentTerms: string | null;
+  createdAt: string;
+  user?: BackendListingUser;
+}
+
+export interface ListingFilters {
+  side: BackendListingSide;
+  status?: string;
+  categoryId?: string;
+  commodityId?: string;
+  itemName?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const listingsApi = {
+  /**
+   * GET /listings?side=&status=&... — admin sessions see every user's rows
+   * across both sides and all statuses (services/listing.service.js).
+   */
+  list: (f: ListingFilters) =>
+    api.getPage<BackendListing[]>(`/listings${buildQuery({
+      side: f.side, status: f.status, categoryId: f.categoryId,
+      commodityId: f.commodityId, itemName: f.itemName,
+      page: f.page, limit: f.limit,
+    })}`),
+  /** GET /listings/:id */
+  getById: (id: string) => api.get<BackendListing>(`/listings/${id}`),
+  /**
+   * PATCH /listings/:id — OWNER-ONLY on the backend (403 otherwise).
+   * There is no admin edit-on-behalf endpoint, so the UI surfaces the
+   * backend's 403 honestly when an admin tries it.
+   */
+  update: (id: string, patch: { price?: number | null; weightKg?: number | null }) =>
+    api.patch<BackendListing>(`/listings/${id}`, patch),
+  /** PATCH /listings/:id/withdraw — owner-only, same caveat as update. */
+  withdraw: (id: string) =>
+    api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
+};
+
+/* ---------- settings (routes/settings.js — read: authed, PATCH: admin) ---------- */
+
+export interface BackendSetting {
+  key: string;
+  value: unknown;
+  updatedBy: string | null;
+  updatedAt?: string;
+}
+
+export const settingsApi = {
+  /** GET /settings?key= */
+  list: (key?: string) =>
+    api.getPage<BackendSetting[]>(`/settings${buildQuery({ key })}`),
+  /** GET /settings/:key */
+  getByKey: (key: string) => api.get<BackendSetting>(`/settings/${encodeURIComponent(key)}`),
+  /** PATCH /settings/:key { value } — requireRole(['admin']). */
+  update: (key: string, value: unknown) =>
+    api.patch<BackendSetting>(`/settings/${encodeURIComponent(key)}`, { value }),
+};
+
+/* ---------- commodity categories (authenticated + ToS; writes: admin) ---------- */
+
+export interface BackendCategory {
+  id: string;
+  name: string;
+}
+
+export const categoriesApi = {
+  /** GET /commodity-categories?name= */
+  list: (name?: string, limit = 100) =>
+    api.getPage<BackendCategory[]>(`/commodity-categories${buildQuery({ name, limit })}`),
+  /** POST /commodity-categories { name } — admin only. */
+  create: (name: string) =>
+    api.post<BackendCategory>('/commodity-categories', { name }),
+  /** PATCH /commodity-categories/:id { name } — admin only. */
+  rename: (id: string, name: string) =>
+    api.patch<BackendCategory>(`/commodity-categories/${id}`, { name }),
+  /** DELETE /commodity-categories/:id — admin only, 204. 409 if referenced. */
+  remove: (id: string) => api.del(`/commodity-categories/${id}`),
+};
+
+/* ---------- commodities (authenticated + ToS; writes: admin) ---------- */
+
+export interface BackendCommodity {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
+export const commoditiesApi = {
+  /** GET /commodities?categoryId=&name= */
+  list: (categoryId?: string, name?: string, limit = 100) =>
+    api.getPage<BackendCommodity[]>(`/commodities${buildQuery({ categoryId, name, limit })}`),
+  /** POST /commodities { categoryId, name } — admin only. */
+  create: (categoryId: string, name: string) =>
+    api.post<BackendCommodity>('/commodities', { categoryId, name }),
+  /** PATCH /commodities/:id { name?, categoryId? } — admin only. */
+  update: (id: string, patch: { name?: string; categoryId?: string }) =>
+    api.patch<BackendCommodity>(`/commodities/${id}`, patch),
+  /** DELETE /commodities/:id — admin only, 204. */
+  remove: (id: string) => api.del(`/commodities/${id}`),
+};
+
+/* ---------- ToS (routes/tos.js — authenticated; gate for listings writes) ---------- */
+
+export interface TosStatus {
+  needsAcceptance: boolean;
+  currentVersion: {
+    version: number;
+    termsUrl: string | null;
+    privacyUrl: string | null;
+    effectiveDate: string;
+  };
+  acceptedVersion: number | null;
+  acceptedAt: string | null;
+}
+
+export const tosApi = {
+  /** GET /tos/status */
+  status: () => api.get<TosStatus>('/tos/status'),
+  /** POST /tos/accept { version } */
+  accept: (version: number) => api.post<TosStatus>('/tos/accept', { version }),
+};
+
+/* ---------- ToS versions (routes/tosVersions.js — publish/list: admin) ---------- */
+
+export interface TosVersion {
+  id: string;
+  version: number;
+  effectiveDate: string;
+  termsUrl: string | null;
+  privacyUrl: string | null;
+}
+
+export const tosVersionsApi = {
+  /** GET /tos-versions — admin only. */
+  list: (page = 1, limit = 20) =>
+    api.getPage<TosVersion[]>(`/tos-versions${buildQuery({ page, limit })}`),
+  /** POST /tos-versions { effectiveDate, termsUrl, privacyUrl } — admin only. */
+  publish: (body: { effectiveDate: string; termsUrl: string; privacyUrl: string }) =>
+    api.post<TosVersion>('/tos-versions', body),
+};
