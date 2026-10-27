@@ -8,6 +8,7 @@ export function lakhs(n: number): string {
   return '₹' + (n / 100000).toFixed(1) + 'L';
 }
 
-export function freightPrice(low: number, high: number): string {
+export function freightPrice(low: number | null, high: number | null): string {
+  if (low == null || high == null) return '—';
   return low === high ? inr(low) : `${inr(low)}–${high}`;
 }

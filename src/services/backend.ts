@@ -8,9 +8,9 @@
  *  - call admin routes only for admin sessions (see RequireAdmin in App.tsx),
  *  - surface 403s honestly instead of inventing endpoints.
  *
- * Routes with NO backend endpoint keep using local state/mock data and are
- * listed in the final report (negotiations, trades, freight, audit log,
- * user directory, brokers). Nothing here invents an endpoint.
+ * Routes with NO backend endpoint remain unavailable rather than being
+ * simulated (negotiations, trades, audit log, user directory, brokers).
+ * Nothing here invents an endpoint.
  */
 import { api, buildQuery } from './api';
 
@@ -155,6 +155,84 @@ export const listingsApi = {
   /** PATCH /listings/:id/withdraw — owner-only, same caveat as update. */
   withdraw: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
+};
+
+/* ---------- freight (routes/freight.js — authenticated; writes: admin) ---------- */
+
+export interface BackendFreightRoute {
+  id: string;
+  originName: string;
+  destinationName: string;
+  priceLow: number | null;
+  priceHigh: number | null;
+  unit: string;
+  truckCapacity: string | null;
+  priceValidUntil: string | null;
+  status: 'active' | 'price_expired';
+  updatedAt: string;
+}
+
+export interface FreightFilters {
+  origin?: string;
+  destination?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface FreightUploadPreview {
+  summary: {
+    totalRows: number;
+    toCreate: number;
+    toUpdate: number;
+    invalidRows: number;
+    canCommit: boolean;
+  };
+  rows: Array<{
+    rowNumber: number;
+    valid: boolean;
+    errors: string[];
+    action: 'create' | 'update' | null;
+  }>;
+}
+
+export const freightApi = {
+  /** GET /freight?origin=&destination=&page=&limit= */
+  list: (f: FreightFilters = {}) =>
+    api.getPage<BackendFreightRoute[]>(`/freight${buildQuery({
+      origin: f.origin,
+      destination: f.destination,
+      page: f.page,
+      limit: f.limit,
+    })}`),
+  /** POST /freight — admin only. */
+  create: (body: {
+    originName: string;
+    destinationName: string;
+    priceLow: number;
+    priceHigh: number;
+    unit: string;
+    truckCapacity: string | null;
+  }) => api.post<BackendFreightRoute>('/freight', body),
+  /** PATCH /freight/:id — admin only. */
+  update: (id: string, body: {
+    priceLow?: number;
+    priceHigh?: number;
+    truckCapacity?: string | null;
+  }) => api.patch<BackendFreightRoute>(`/freight/${id}`, body),
+  /** DELETE /freight/:id — admin only, 204. */
+  remove: (id: string) => api.del(`/freight/${id}`),
+  /** POST /freight/upload/preview — admin only; multipart field `file`. */
+  previewUpload: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return api.postForm<FreightUploadPreview>('/freight/upload/preview', body);
+  },
+  /** POST /freight/upload/commit — admin only; multipart field `file`. */
+  commitUpload: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return api.postForm<{ created: number; updated: number; totalRows: number }>('/freight/upload/commit', body);
+  },
 };
 
 /* ---------- settings (routes/settings.js — read: authed, PATCH: admin) ---------- */

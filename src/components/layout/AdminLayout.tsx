@@ -30,9 +30,12 @@ function initialCollapsed(): boolean {
  * so individual pages stay focused on their own content.
  */
 export function AdminLayout() {
-  const { toast, flash, uploadFreightSheet, exportCsv, rows, trades } = useAdmin();
+  const {
+    toast, flash, previewFreightUpload, exportCsv, rows, trades, liveMode,
+  } = useAdmin();
   const navigate = useNavigate();
   const location = useLocation();
+  const freightFileInput = useRef<HTMLInputElement>(null);
   const seg = location.pathname.split('/')[1] || 'dash';
   const page = PAGES[PATH_TO_SCREEN[seg] ?? 'dash'] ?? PAGES.dash;
 
@@ -78,7 +81,11 @@ export function AdminLayout() {
 
   const handlePrimary = () => {
     if (seg === 'freight') {
-      uploadFreightSheet();
+      if (!liveMode) {
+        flash('Connect the backend before uploading freight routes.');
+        return;
+      }
+      freightFileInput.current?.click();
       return;
     }
     if (seg === 'trades') {
@@ -121,6 +128,19 @@ export function AdminLayout() {
             >
               {page[2]}
             </button>
+            {seg === 'freight' ? (
+              <input
+                ref={freightFileInput}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                hidden
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) void previewFreightUpload(file);
+                }}
+              />
+            ) : null}
           </div>
           {toast ? <div className="toast" role="status">{toast}</div> : null}
           <Outlet />

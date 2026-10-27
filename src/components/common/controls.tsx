@@ -49,6 +49,7 @@ export function Modal({
   onClose,
   onSave,
   saveLabel,
+  saveDisabled = false,
   children,
 }: {
   title: string;
@@ -56,6 +57,7 @@ export function Modal({
   onClose: () => void;
   onSave: () => void;
   saveLabel: string;
+  saveDisabled?: boolean;
   children: React.ReactNode;
 }) {
   useEscape(onClose);
@@ -83,7 +85,7 @@ export function Modal({
           <button className="btn btn-secondary" onClick={onClose} style={{ height: 36, padding: '0 16px', fontSize: 13 }}>
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={onSave} style={{ height: 36, padding: '0 18px', fontSize: 13 }}>
+          <button className="btn btn-primary" onClick={onSave} disabled={saveDisabled} style={{ height: 36, padding: '0 18px', fontSize: 13 }}>
             {saveLabel}
           </button>
         </div>

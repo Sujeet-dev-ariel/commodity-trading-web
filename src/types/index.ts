@@ -90,12 +90,14 @@ export interface Broker {
 
 export interface FreightRoute {
   id: number;
+  /** Backend UUID when loaded live (freight API). */
+  backendId?: string;
   origin: string;
   dest: string;
-  low: number;
-  high: number;
+  low: number | null;
+  high: number | null;
   capacity: string;
-  status: 'Published' | 'Pending review';
+  status: 'Published' | 'Pending review' | 'Price expired';
 }
 
 export interface AuditEntry {

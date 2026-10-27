@@ -75,10 +75,11 @@ function unwrap<T>(body: unknown): T {
 }
 
 async function rawFetch(path: string, init: RequestInit, token: string | null): Promise<Response> {
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
   return fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
-      ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers ?? {}),
     },
@@ -179,6 +180,8 @@ export const api = {
   getPage: <T>(path: string) => requestWithMeta<T>(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  postForm: <T>(path: string, body: FormData) =>
+    request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del: (path: string) =>

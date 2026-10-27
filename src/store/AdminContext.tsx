@@ -25,6 +25,7 @@ import {
   commoditiesApi,
   invitesApi,
   listingsApi,
+  freightApi,
   settingsApi,
   toE164Indian,
   tosVersionsApi,
@@ -32,6 +33,8 @@ import {
   type BackendCommodity,
   type BackendListing,
   type BackendListingStatus,
+  type BackendFreightRoute,
+  type FreightUploadPreview,
   type TosVersion,
 } from '../services/backend';
 
@@ -137,6 +140,19 @@ interface AdminState {
   setAuditQuery: (v: string) => void;
 
   freightRoutes: FreightRoute[];
+  freightLoading: boolean;
+  freightError: string | null;
+  freightPage: number;
+  freightTotalPages: number;
+  setFreightPage: (page: number) => void;
+  refreshFreight: (page?: number) => Promise<void>;
+  freightUploadFile: File | null;
+  freightUploadPreview: FreightUploadPreview | null;
+  freightUploadLoading: boolean;
+  freightUploadError: string | null;
+  previewFreightUpload: (file: File) => Promise<void>;
+  commitFreightUpload: () => Promise<void>;
+  clearFreightUpload: () => void;
   freightOriginFilter: string;
   setFreightOriginFilter: (f: string) => void;
   freightStatusFilter: string;
@@ -166,8 +182,6 @@ interface AdminState {
   setNewFreightCapacity: (v: string) => void;
   newFreightError: string | null;
   addFreightRoute: () => void;
-  uploadFreightSheet: () => void;
-
   /* ----- live backend ----- */
   /** True when VITE_API_BASE_URL is set and routes hit the real backend. */
   liveMode: boolean;
@@ -261,6 +275,19 @@ function mapBackendListing(b: BackendListing, index: number, categoryName: (id: 
   };
 }
 
+function mapBackendFreight(b: BackendFreightRoute, index: number): FreightRoute {
+  return {
+    id: index + 1,
+    backendId: b.id,
+    origin: b.originName,
+    dest: b.destinationName,
+    low: b.priceLow,
+    high: b.priceHigh,
+    capacity: b.truckCapacity ?? '',
+    status: b.status === 'price_expired' ? 'Price expired' : 'Published',
+  };
+}
+
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [countdown, setCountdown] = useState(nextExpiryCountdown);
@@ -312,9 +339,15 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [auditAction, setAuditAction] = useState('All actions');
   const [auditQuery, setAuditQuery] = useState('');
 
-  // No freight endpoint on the backend yet — routes entered here live in
-  // local state only. Starts empty; never seeded.
   const [freightRoutes, setFreightRoutes] = useState<FreightRoute[]>([]);
+  const [freightLoading, setFreightLoading] = useState(false);
+  const [freightError, setFreightError] = useState<string | null>(null);
+  const [freightPage, setFreightPage] = useState(1);
+  const [freightTotalPages, setFreightTotalPages] = useState(0);
+  const [freightUploadFile, setFreightUploadFile] = useState<File | null>(null);
+  const [freightUploadPreview, setFreightUploadPreview] = useState<FreightUploadPreview | null>(null);
+  const [freightUploadLoading, setFreightUploadLoading] = useState(false);
+  const [freightUploadError, setFreightUploadError] = useState<string | null>(null);
   const [freightOriginFilter, setFreightOriginFilter] = useState('All');
   const [freightStatusFilter, setFreightStatusFilter] = useState('All statuses');
   const [freightEditId, setFreightEditId] = useState<number | null>(null);
@@ -376,8 +409,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
      Admin-only enforcement happens server-side (requireRole(['admin']));
      the UI additionally gates on the session's roles (see RequireAdmin)
      and surfaces backend 403s honestly. Endpoints the backend does not
-     expose (user directory/suspend, negotiations, trades, freight, audit
-     log, brokers) intentionally keep local state, starting empty — the
+     expose (user directory/suspend, negotiations, trades, audit log,
+     brokers) intentionally keep local state, starting empty — the
      console never shows invented rows. */
   const liveCategoriesRef = useRef<BackendCategory[]>([]);
 
@@ -459,6 +492,27 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setListingsLoading(false);
     }
   }, [liveMode, sideFilter, statusFilter, catFilter, listingPage, searchQuery, ensureCategories]);
+
+  const refreshFreight = useCallback(async (requestedPage = freightPage) => {
+    if (!liveMode) return;
+    setFreightLoading(true);
+    setFreightError(null);
+    try {
+      const { data, meta } = await freightApi.list({
+        origin: freightOriginFilter === 'All' ? undefined : freightOriginFilter,
+        page: requestedPage,
+        limit: 100,
+      });
+      setFreightRoutes(data.map(mapBackendFreight));
+      setFreightTotalPages(meta?.totalPages ?? 0);
+    } catch (e) {
+      setFreightRoutes([]);
+      setFreightTotalPages(0);
+      setFreightError(liveErr(e, 'Could not load freight routes from the backend.'));
+    } finally {
+      setFreightLoading(false);
+    }
+  }, [liveMode, freightOriginFilter, freightPage]);
 
   const refreshLiveSettings = useCallback(async () => {
     if (!liveMode) return;
@@ -914,15 +968,16 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, [flash, liveMode, expiryTime]);
 
   const publishPending = useCallback(() => {
+    if (liveMode) return;
     setFreightRoutes((prev) => prev.map((r) => (r.status === 'Pending review' ? { ...r, status: 'Published' as const } : r)));
     flash('Published pending freight routes');
-  }, [flash]);
+  }, [flash, liveMode]);
 
   const openFreightEdit = useCallback((id: number) => {
     const r = freightRoutes.find((x) => x.id === id);
     setFreightEditId(id);
-    setFreightEditLow(r ? String(r.low) : '');
-    setFreightEditHigh(r ? String(r.high) : '');
+    setFreightEditLow(r?.low == null ? '' : String(r.low));
+    setFreightEditHigh(r?.high == null ? '' : String(r.high));
     setFreightEditCapacity(r ? r.capacity : '');
     setFreightEditError(null);
   }, [freightRoutes]);
@@ -944,8 +999,28 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setFreightEditError('Price high must be a number ≥ price low.');
       return;
     }
-    if (!freightEditCapacity.trim()) {
-      setFreightEditCapacity('Capacity is required.');
+    const target = freightRoutes.find((r) => r.id === freightEditId);
+    if (liveMode) {
+      const backendId = target?.backendId;
+      if (!backendId) {
+        setFreightEditError('This route has no backend id — reload the list.');
+        return;
+      }
+      setFreightEditError(null);
+      void (async () => {
+        try {
+          await freightApi.update(backendId, {
+            priceLow: low,
+            priceHigh: high,
+            truckCapacity: freightEditCapacity.trim() || null,
+          });
+          setFreightEditId(null);
+          flash('Route saved to the backend');
+          await refreshFreight();
+        } catch (e) {
+          setFreightEditError(liveErr(e, 'Route update failed.'));
+        }
+      })();
       return;
     }
     setFreightEditError(null);
@@ -954,12 +1029,69 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       : r)));
     setFreightEditId(null);
     flash('Route updated');
-  }, [freightEditId, freightEditLow, freightEditHigh, freightEditCapacity, flash]);
+  }, [freightEditId, freightEditLow, freightEditHigh, freightEditCapacity, freightRoutes, liveMode, flash, refreshFreight]);
 
   const removeFreightRoute = useCallback((id: number) => {
+    if (liveMode) {
+      const backendId = freightRoutes.find((r) => r.id === id)?.backendId;
+      if (!backendId) {
+        flash('This route has no backend id — reload the list.');
+        return;
+      }
+      void (async () => {
+        try {
+          await freightApi.remove(backendId);
+          flash('Route removed from the backend');
+          await refreshFreight();
+        } catch (e) {
+          flash(liveErr(e, 'Route removal failed.'));
+        }
+      })();
+      return;
+    }
     setFreightRoutes((prev) => prev.filter((r) => r.id !== id));
     flash('Route removed');
-  }, [flash]);
+  }, [flash, liveMode, freightRoutes, refreshFreight]);
+
+  const clearFreightUpload = useCallback(() => {
+    setFreightUploadFile(null);
+    setFreightUploadPreview(null);
+    setFreightUploadError(null);
+  }, []);
+
+  const previewFreightUpload = useCallback(async (file: File) => {
+    if (!liveMode) {
+      setFreightUploadError('Configure VITE_API_BASE_URL and sign in to upload routes.');
+      return;
+    }
+    setFreightUploadFile(file);
+    setFreightUploadPreview(null);
+    setFreightUploadError(null);
+    setFreightUploadLoading(true);
+    try {
+      setFreightUploadPreview(await freightApi.previewUpload(file));
+    } catch (e) {
+      setFreightUploadError(liveErr(e, 'Could not preview the freight workbook.'));
+    } finally {
+      setFreightUploadLoading(false);
+    }
+  }, [liveMode]);
+
+  const commitFreightUpload = useCallback(async () => {
+    if (!freightUploadFile || !freightUploadPreview?.summary.canCommit || !liveMode) return;
+    setFreightUploadError(null);
+    setFreightUploadLoading(true);
+    try {
+      const result = await freightApi.commitUpload(freightUploadFile);
+      clearFreightUpload();
+      flash(`Workbook imported: ${result.created} created, ${result.updated} updated`);
+      await refreshFreight();
+    } catch (e) {
+      setFreightUploadError(liveErr(e, 'Could not import the freight workbook.'));
+    } finally {
+      setFreightUploadLoading(false);
+    }
+  }, [freightUploadFile, freightUploadPreview, liveMode, clearFreightUpload, flash, refreshFreight]);
 
   const addFreightRoute = useCallback(() => {
     if (!newFreightDest.trim() || !newFreightLow.trim()) {
@@ -977,6 +1109,30 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setNewFreightError(null);
+    if (liveMode) {
+      void (async () => {
+        try {
+          await freightApi.create({
+            originName: newFreightOrigin,
+            destinationName: newFreightDest.trim(),
+            priceLow: low,
+            priceHigh: high,
+            unit: 'per_quintal',
+            truckCapacity: newFreightCapacity.trim() || null,
+          });
+          setNewFreightDest('');
+          setNewFreightLow('');
+          setNewFreightHigh('');
+          setNewFreightCapacity('');
+          setFreightPage(1);
+          flash('Route added to the backend');
+          await refreshFreight(1);
+        } catch (e) {
+          setNewFreightError(liveErr(e, 'Route creation failed.'));
+        }
+      })();
+      return;
+    }
     setFreightRoutes((prev) => [
       {
         id: Math.max(0, ...prev.map((r) => r.id)) + 1,
@@ -993,11 +1149,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setNewFreightHigh('');
     setNewFreightCapacity('');
     flash('Route added and published');
-  }, [newFreightDest, newFreightLow, newFreightHigh, newFreightCapacity, newFreightOrigin, flash]);
-
-  const uploadFreightSheet = useCallback(() => {
-    flash('Sheet upload is not wired to a backend endpoint yet — add routes manually below');
-  }, [flash]);
+  }, [newFreightDest, newFreightLow, newFreightHigh, newFreightCapacity, newFreightOrigin, liveMode, flash, refreshFreight]);
 
   const value = useMemo<AdminState>(() => ({
     searchQuery, setSearchQuery, countdown, toast, flash,
@@ -1020,6 +1172,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
     audit, auditAdmin, setAuditAdmin, auditAction, setAuditAction, auditQuery, setAuditQuery,
     freightRoutes, freightOriginFilter, setFreightOriginFilter,
+    freightLoading, freightError, freightPage, setFreightPage, freightTotalPages, refreshFreight,
+    freightUploadFile, freightUploadPreview, freightUploadLoading, freightUploadError,
+    previewFreightUpload, commitFreightUpload, clearFreightUpload,
     freightStatusFilter, setFreightStatusFilter, publishPending,
     freightEditId, openFreightEdit, closeFreightEdit,
     freightEditLow, setFreightEditLow, freightEditHigh, setFreightEditHigh,
@@ -1028,7 +1183,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     newFreightOrigin, setNewFreightOrigin, newFreightDest, setNewFreightDest,
     newFreightLow, setNewFreightLow, newFreightHigh, setNewFreightHigh,
     newFreightCapacity, setNewFreightCapacity, newFreightError, addFreightRoute,
-    uploadFreightSheet,
     liveMode,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
@@ -1049,11 +1203,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     brokers, removeBroker, addBroker, categories, addCategory, newCategory,
     expiryTime, timezone, defaultPaymentTerms, saveSettings,
     audit, auditAdmin, auditAction, auditQuery,
-    freightRoutes, freightOriginFilter, freightStatusFilter, publishPending,
+    freightRoutes, freightLoading, freightError, freightPage, freightTotalPages, refreshFreight,
+    freightUploadFile, freightUploadPreview, freightUploadLoading, freightUploadError,
+    previewFreightUpload, commitFreightUpload, clearFreightUpload,
+    freightOriginFilter, freightStatusFilter, publishPending,
     freightEditId, openFreightEdit, closeFreightEdit,
     freightEditLow, freightEditHigh, freightEditCapacity, freightEditError, saveFreightEdit,
     removeFreightRoute, newFreightOrigin, newFreightDest, newFreightLow, newFreightHigh,
-    newFreightCapacity, newFreightError, addFreightRoute, uploadFreightSheet,
+    newFreightCapacity, newFreightError, addFreightRoute,
     liveMode,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
