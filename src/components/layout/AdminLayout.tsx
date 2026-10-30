@@ -82,7 +82,7 @@ export function AdminLayout() {
   const handlePrimary = () => {
     if (seg === 'freight') {
       if (!liveMode) {
-        flash('Connect the backend before uploading freight routes.');
+        flash('Connect to the live service before uploading freight routes.');
         return;
       }
       freightFileInput.current?.click();

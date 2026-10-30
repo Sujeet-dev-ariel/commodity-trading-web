@@ -18,6 +18,8 @@ export interface NavItem {
 
 export interface UserRecord {
   id: number;
+  /** Backend user id when loaded live (derived from listing owners). */
+  backendId?: string;
   firm: string;
   owner: string;
   phone: string;

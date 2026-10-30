@@ -158,7 +158,7 @@ export function LoginPage() {
               </Field>
               {demoCode && authService.isDemoMode() ? (
                 <div className="callout-info">
-                  <strong>Demo build</strong> — no SMS backend is configured, so your code is{' '}
+                  <strong>Demo build</strong> — SMS delivery is not configured, so your code is{' '}
                   <strong style={{ fontSize: 16, letterSpacing: 2 }}>{demoCode}</strong>.
                   It expires in 5 minutes.
                 </div>

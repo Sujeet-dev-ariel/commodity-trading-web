@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { TONE_COLOR } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
@@ -14,10 +15,24 @@ interface QueueEntry {
 
 export function DashboardPage() {
   const {
-    rows, listingsLoading, invites, invitesLoading,
-    negotiations, trades, freightRoutes, audit,
+    liveMode,
+    rows, listingsLoading, listingsError, refreshListings,
+    invites, invitesLoading, invitesError, refreshInvites,
+    negotiations, trades, freightRoutes, freightLoading, freightError, refreshFreight, audit,
   } = useAdmin();
 
+  useEffect(() => {
+    if (!liveMode) return;
+    const id = window.setTimeout(() => {
+      void refreshListings();
+      void refreshInvites();
+      void refreshFreight();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [liveMode, refreshListings, refreshInvites, refreshFreight]);
+
+  const dataErrors = [listingsError, invitesError, freightError]
+    .filter((error): error is string => Boolean(error));
   const live = negotiations.filter((n) => n.state !== 'Completed');
   const sellActive = rows.filter((r) => r.side === 'SELL' && r.status === 'Active');
   const buyActive = rows.filter((r) => r.side === 'BUY' && r.status === 'Active');
@@ -26,11 +41,11 @@ export function DashboardPage() {
   const pendingFreight = freightRoutes.filter((r) => r.status === 'Pending review');
 
   const metrics = [
-    { label: 'Live sell listings', value: String(sellActive.length), delta: `${rows.length} rows loaded` },
+    { label: 'Live sell listings', value: String(sellActive.length), delta: listingsLoading ? 'Loading…' : `${rows.length} rows loaded` },
     { label: 'Open buy requirements', value: String(buyActive.length), delta: `${buyActive.length} awaiting offers` },
     { label: 'Active negotiations', value: String(live.length), delta: urgentNego.length ? `${urgentNego.length} urgent` : 'none urgent' },
     { label: 'Trades closed', value: String(trades.length), delta: trades.length ? 'this session' : 'no trade feed yet' },
-    { label: 'Pending invites', value: String(invites.length), delta: invitesLoading ? 'loading…' : 'awaiting signup' },
+    { label: 'Pending invites', value: String(invites.length), delta: invitesLoading ? 'Loading…' : 'awaiting signup' },
   ];
 
   const queue: QueueEntry[] = [];
@@ -77,6 +92,10 @@ export function DashboardPage() {
         ))}
       </div>
 
+      {dataErrors.length > 0 ? (
+        <div className="field-error" role="alert">{dataErrors.join(' ')}</div>
+      ) : null}
+
       <div className="panel">
         <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--color-neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Needs attention</div>
@@ -104,7 +123,7 @@ export function DashboardPage() {
           </div>
         ) : (
           <div className="text-muted" style={{ padding: '18px', fontSize: 13 }}>
-            {listingsLoading || invitesLoading ? 'Loading live data…' : 'Nothing needs attention right now.'}
+            {listingsLoading || invitesLoading || freightLoading ? 'Loading live data…' : 'Nothing needs attention right now.'}
           </div>
         )}
       </div>
@@ -133,7 +152,7 @@ export function DashboardPage() {
           ))}
           {live.length === 0 ? (
             <div className="text-muted" style={{ padding: '18px', fontSize: 13 }}>
-              No live negotiations. The backend exposes no negotiations feed yet, so threads started in-session appear here.
+              No negotiations yet — threads started in this session appear here.
             </div>
           ) : null}
         </div>

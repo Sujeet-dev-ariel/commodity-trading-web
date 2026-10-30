@@ -84,7 +84,6 @@ export function ForbiddenPage() {
         <div style={{ fontWeight: 700, fontSize: 18 }}>Admin access required</div>
         <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
           This console is admin-only. Your account holds: {roles.length ? roles.join(', ') : 'no roles'}.
-          The backend enforces this too — non-admin tokens get 403 on every admin route.
         </p>
         <button className="btn btn-secondary" onClick={() => void logout()} style={{ minHeight: 40, fontSize: 13, alignSelf: 'flex-start' }}>
           Sign out

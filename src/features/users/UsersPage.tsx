@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from 'react';
-import { EmptyState, Field, FilterTag } from '../../components/common/controls';
+import { EmptyState, Field, FilterTag, Pagination, usePagination } from '../../components/common/controls';
 import { STATUS_CLS } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
+import type { UserRecord } from '../../types';
+
+const PAGE_SIZE = 10;
 
 const FILTERS = [
   { key: 'all', label: 'All users' },
@@ -19,40 +22,76 @@ export function UsersPage() {
   const admin = useAdmin();
   const {
     users, userFilter, setUserFilter, suspendUser, editRoles,
+    usersLoading, usersError, refreshUsers,
     invites, revokeInvite, inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
     inviteBuyer, toggleInviteBuyer, inviteSeller, toggleInviteSeller,
     invitePaymentTerms, setInvitePaymentTerms, inviteError, sendInvite, searchQuery,
     liveMode, invitesLoading, invitesError, refreshInvites,
   } = admin;
 
-  // Live backend: invites come from GET /invites (admin or broker role).
-  // There is no backend user-directory endpoint, so the table starts empty
-  // and only reflects session-local changes.
+  // Live backend: the API has no dedicated user directory, so the roster is
+  // derived from listing owners (GET /listings, admin sees every row) and
+  // pending invites come from GET /invites.
   useEffect(() => {
-    if (liveMode) void refreshInvites();
-  }, [liveMode, refreshInvites]);
+    if (!liveMode) return;
+    void refreshUsers();
+    void refreshInvites();
+  }, [liveMode, refreshUsers, refreshInvites]);
+
+  // Pending invites are not accounts yet, but showing them as Pending rows
+  // makes the status filter meaningful instead of always empty.
+  const roster = useMemo<UserRecord[]>(() => {
+    const pending = invites.map<UserRecord>((inv, i) => {
+      const role = /seller/i.test(inv.meta) ? 'Seller' : /buyer/i.test(inv.meta) ? 'Buyer' : null;
+      const invited = inv.meta.replace(/^[^·]*·\s*/, '');
+      return {
+        id: -(i + 1),
+        firm: inv.firm || '—',
+        owner: 'Invite pending',
+        phone: inv.firm,
+        modes: role ? [role] : [],
+        status: 'Pending',
+        invitedBy: '—',
+        lastActive: invited || '—',
+        paymentTerms: '—',
+      };
+    });
+    return [...users, ...pending];
+  }, [users, invites]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return users
+    return roster
       .filter((u) => userFilter === 'all' || u.status === userFilter)
       .filter((u) => !q || u.firm.toLowerCase().includes(q) || u.phone.replace(/\s/g, '').includes(q.replace(/\s/g, '')) || u.owner.toLowerCase().includes(q));
-  }, [users, userFilter, searchQuery]);
+  }, [roster, userFilter, searchQuery]);
+
+  // The roster is fetched whole, so pagination is client-side. The page
+  // resets whenever the filter or search changes.
+  const {
+    page: currentPage, setPage: setUserPage, totalPages, pageItems: pageRows,
+  } = usePagination(filtered, PAGE_SIZE, `${userFilter}|${searchQuery}`);
 
   return (
     <div className="users-split">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {FILTERS.map((f) => (
             <FilterTag key={f.key} label={f.label} active={userFilter === f.key} onClick={() => setUserFilter(f.key)} />
           ))}
+          <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
+            {filtered.length} {filtered.length === 1 ? 'user' : 'users'}
+            {totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ''}
+          </span>
         </div>
+        {usersError ? <div className="field-error" role="alert">{usersError}</div> : null}
         <div className="panel">
           <div className="table-scroll">
             <div className="grid-head" style={{ ...GRID, minWidth: 860 }}>
-              <div>FIRM</div><div>PHONE</div><div>MODES</div><div>PAYMENT</div><div>INVITED BY</div><div>LAST ACTIVE</div><div />
+              <div>FIRM</div><div>PHONE</div><div>MODES</div><div>PAYMENT</div><div>INVITED BY</div><div>LAST ACTIVITY</div><div />
             </div>
-            {filtered.map((u) => (
+            {usersLoading ? <div className="text-muted" style={{ padding: '18px 16px', fontSize: 13 }}>Loading users…</div> : null}
+            {pageRows.map((u) => (
               <div key={u.id} className="grid-row" style={{ ...GRID, minWidth: 860 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
@@ -78,9 +117,19 @@ export function UsersPage() {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 ? <EmptyState message="No users here — the backend exposes no user directory, so this table starts empty." /> : null}
+            {filtered.length === 0 && !usersLoading ? <EmptyState message="No users match these filters." /> : null}
           </div>
         </div>
+        {totalPages > 1 ? (
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            total={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setUserPage}
+            disabled={usersLoading}
+          />
+        ) : null}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -101,7 +150,7 @@ export function UsersPage() {
           <Field label="Firm name">
             <input
               className="input"
-              placeholder="Kept locally — the backend invite stores phone + role only"
+              placeholder="Firm name"
               value={inviteeFirm}
               onChange={(e) => setInviteeFirm(e.target.value)}
             />

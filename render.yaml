@@ -1,0 +1,22 @@
+# Render Blueprint for the KKPK admin console (Vite + React static site).
+#
+# Use it from Render: New + -> Blueprint -> pick this repository.
+# Or create a Static Site manually and copy these settings.
+services:
+  - type: web
+    name: commodity-trading-web
+    runtime: static
+    branch: main
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://tradding-backend-mh20.onrender.com/api/v1
+      - key: NODE_VERSION
+        value: "20"
+    # React Router uses clean URLs (e.g. /listings), so every path must fall
+    # back to index.html or a page refresh/deep link would 404 on Render.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

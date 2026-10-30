@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { EmptyState, Field, FilterTag, Modal } from '../../components/common/controls';
+import { useEffect, useMemo, useState } from 'react';
+import { EmptyState, Field, FilterTag, Modal, Pagination } from '../../components/common/controls';
 import { FREIGHT_STATES } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { freightPrice } from '../../utils/format';
@@ -22,14 +22,37 @@ export function FreightPage() {
     freightEditCapacity, setFreightEditCapacity, freightEditError, closeFreightEdit, saveFreightEdit,
     newFreightOrigin, setNewFreightOrigin, newFreightDest, setNewFreightDest,
     newFreightLow, setNewFreightLow, newFreightHigh, setNewFreightHigh,
-    newFreightCapacity, setNewFreightCapacity, newFreightError, addFreightRoute,
+    newFreightCapacity, setNewFreightCapacity, newFreightError, setNewFreightError,
+    addFreightRoute,
     searchQuery,
     liveMode,
   } = admin;
 
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
+
   useEffect(() => {
     if (liveMode) void refreshFreight();
   }, [liveMode, refreshFreight]);
+
+  const openAdd = () => {
+    setNewFreightError(null);
+    setAddOpen(true);
+  };
+
+  const closeAdd = () => {
+    if (addSaving) return;
+    setAddOpen(false);
+  };
+
+  const submitAdd = async () => {
+    setAddSaving(true);
+    try {
+      if (await addFreightRoute()) setAddOpen(false);
+    } finally {
+      setAddSaving(false);
+    }
+  };
 
   const pendingCount = freightRoutes.filter((r) => r.status === 'Pending review').length;
 
@@ -83,8 +106,17 @@ export function FreightPage() {
           {!liveMode ? <option>Pending review</option> : null}
           <option>Price expired</option>
         </select>
-        <div className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
-          Per quintal · same 2:00 AM expiry as commodity prices
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            Per quintal · same 2:00 AM expiry as commodity prices
+          </span>
+          <button
+            className="btn btn-primary"
+            onClick={openAdd}
+            style={{ height: 34, padding: '0 16px', fontSize: 12.5, flex: 'none' }}
+          >
+            + Add route
+          </button>
         </div>
       </div>
 
@@ -116,47 +148,54 @@ export function FreightPage() {
           {freightError ? <div className="field-error" style={{ padding: '12px 16px' }}>{freightError}</div> : null}
           {view.length === 0 && !freightLoading && !freightError ? <EmptyState message="No freight routes match these filters." /> : null}
         </div>
-        {liveMode && freightTotalPages > 1 ? (
-          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-neutral-200)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button className="btn btn-secondary" disabled={freightPage <= 1 || freightLoading} onClick={() => setFreightPage(freightPage - 1)}>Previous</button>
-            <span className="text-muted" style={{ fontSize: 12 }}>Page {freightPage} of {freightTotalPages}</span>
-            <button className="btn btn-secondary" disabled={freightPage >= freightTotalPages || freightLoading} onClick={() => setFreightPage(freightPage + 1)}>Next</button>
+        {freightTotalPages > 1 ? (
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-neutral-200)' }}>
+            <Pagination
+              page={freightPage}
+              totalPages={freightTotalPages}
+              pageSize={100}
+              onPageChange={setFreightPage}
+              disabled={freightLoading}
+            />
           </div>
         ) : null}
       </div>
 
-      <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 640 }}>
-        <div style={{ fontWeight: 700, fontSize: 14.5 }}>Add a route manually</div>
-        <div className="form-3col">
-          <Field label="Origin (state)">
-            <select className="input" value={newFreightOrigin} onChange={(e) => setNewFreightOrigin(e.target.value)}>
-              {FREIGHT_STATES.map((st) => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Destination">
-            <input className="input" placeholder="e.g. Kandla Port" value={newFreightDest} onChange={(e) => setNewFreightDest(e.target.value)} />
-          </Field>
-          <Field label="Capacity">
-            <input className="input" placeholder="e.g. 30-35 MT" value={newFreightCapacity} onChange={(e) => setNewFreightCapacity(e.target.value)} />
-          </Field>
-        </div>
-        <div className="form-2col-auto">
-          <Field label="Price low (₹/quintal)">
-            <input className="input" type="number" min="0" value={newFreightLow} onChange={(e) => setNewFreightLow(e.target.value)} />
-          </Field>
-          <Field label="Price high (leave blank for a single value)">
-            <input className="input" type="number" min="0" value={newFreightHigh} onChange={(e) => setNewFreightHigh(e.target.value)} />
-          </Field>
-          <div>
-            <button className="btn btn-primary" onClick={addFreightRoute} style={{ height: 38, padding: '0 18px', fontSize: 13 }}>
-              Add route
-            </button>
+      {addOpen ? (
+        <Modal
+          title="Add transport route"
+          subtitle="Published for every user"
+          onClose={closeAdd}
+          onSave={() => { void submitAdd(); }}
+          saveLabel={addSaving ? 'Adding…' : 'Add route'}
+          saveDisabled={addSaving}
+        >
+          <div className="form-3col">
+            <Field label="Origin (state)">
+              <select className="input" value={newFreightOrigin} onChange={(e) => setNewFreightOrigin(e.target.value)}>
+                {FREIGHT_STATES.map((st) => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Destination">
+              <input className="input" placeholder="e.g. Kandla Port" value={newFreightDest} onChange={(e) => setNewFreightDest(e.target.value)} />
+            </Field>
+            <Field label="Capacity">
+              <input className="input" placeholder="e.g. 30-35 MT" value={newFreightCapacity} onChange={(e) => setNewFreightCapacity(e.target.value)} />
+            </Field>
           </div>
-        </div>
-        {newFreightError ? <div className="field-error">{newFreightError}</div> : null}
-      </div>
+          <div className="form-2col">
+            <Field label="Price low (₹/quintal)">
+              <input className="input" type="number" min="0" value={newFreightLow} onChange={(e) => setNewFreightLow(e.target.value)} />
+            </Field>
+            <Field label="Price high (leave blank for a single value)">
+              <input className="input" type="number" min="0" value={newFreightHigh} onChange={(e) => setNewFreightHigh(e.target.value)} />
+            </Field>
+          </div>
+          {newFreightError ? <div className="field-error">{newFreightError}</div> : null}
+        </Modal>
+      ) : null}
 
       {editRow ? (
         <Modal
@@ -184,7 +223,7 @@ export function FreightPage() {
       {freightUploadPreview ? (
         <Modal
           title="Review freight workbook"
-          subtitle="The backend will apply this workbook atomically."
+          subtitle="This workbook will be applied in one step."
           onClose={clearFreightUpload}
           onSave={() => { void commitFreightUpload(); }}
           saveLabel={freightUploadLoading ? 'Importing…' : 'Import workbook'}
@@ -199,7 +238,7 @@ export function FreightPage() {
             </div>
           ))}
           {freightUploadError ? <div className="field-error">{freightUploadError}</div> : null}
-          {freightUploadLoading ? <div className="text-muted">Checking workbook with backend…</div> : null}
+          {freightUploadLoading ? <div className="text-muted">Checking workbook…</div> : null}
         </Modal>
       ) : freightUploadLoading || freightUploadError ? (
         <Modal
@@ -209,7 +248,7 @@ export function FreightPage() {
           saveLabel="Close"
           saveDisabled={freightUploadLoading}
         >
-          {freightUploadLoading ? <div className="text-muted">Checking workbook with backend…</div> : null}
+          {freightUploadLoading ? <div className="text-muted">Checking workbook…</div> : null}
           {freightUploadError ? <div className="field-error">{freightUploadError}</div> : null}
         </Modal>
       ) : null}

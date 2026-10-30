@@ -29,8 +29,10 @@ import {
   settingsApi,
   toE164Indian,
   tosVersionsApi,
+  userDirectoryApi,
   type BackendCategory,
   type BackendCommodity,
+  type BackendDirectoryUser,
   type BackendListing,
   type BackendListingStatus,
   type BackendFreightRoute,
@@ -59,6 +61,9 @@ interface AdminState {
   flash: (msg: string) => void;
 
   users: UserRecord[];
+  usersLoading: boolean;
+  usersError: string | null;
+  refreshUsers: () => Promise<void>;
   userFilter: string;
   setUserFilter: (f: string) => void;
   suspendUser: (id: number) => void;
@@ -181,7 +186,8 @@ interface AdminState {
   newFreightCapacity: string;
   setNewFreightCapacity: (v: string) => void;
   newFreightError: string | null;
-  addFreightRoute: () => void;
+  setNewFreightError: (v: string | null) => void;
+  addFreightRoute: () => Promise<boolean>;
   /* ----- live backend ----- */
   /** True when VITE_API_BASE_URL is set and routes hit the real backend. */
   liveMode: boolean;
@@ -238,7 +244,7 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-const LIVE_PAGE_SIZE = 20;
+export const LIVE_PAGE_SIZE = 20;
 
 const BACKEND_STATUS_LABEL: Record<BackendListingStatus, ListingRow['status']> = {
   active: 'Active',
@@ -288,6 +294,36 @@ function mapBackendFreight(b: BackendFreightRoute, index: number): FreightRoute 
   };
 }
 
+function displayPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(-10);
+  if (digits.length !== 10) return raw || '—';
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
+
+function mapDirectoryUser(u: BackendDirectoryUser, index: number): UserRecord {
+  const last = u.lastListingAt ? new Date(u.lastListingAt) : null;
+  const validLast = last && !Number.isNaN(last.getTime());
+  const modes = [...new Set(
+    u.roles
+      .filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+      .map((role) => role.charAt(0).toUpperCase() + role.slice(1)),
+  )];
+  return {
+    id: index + 1,
+    backendId: u.id,
+    firm: u.firmName?.trim() || u.name?.trim() || displayPhone(u.phone),
+    owner: u.name?.trim() || '—',
+    phone: displayPhone(u.phone),
+    modes,
+    status: 'Active',
+    invitedBy: '—',
+    lastActive: validLast
+      ? `Listed ${last.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
+      : '—',
+    paymentTerms: u.paymentTerms != null ? `${u.paymentTerms} days` : '—',
+  };
+}
+
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [countdown, setCountdown] = useState(nextExpiryCountdown);
@@ -295,6 +331,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const timer = useRef<number | null>(null);
 
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState('all');
   const [invites, setInvites] = useState<Invite[]>([]);
   const [inviteePhone, setInviteePhone] = useState('');
@@ -409,9 +447,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
      Admin-only enforcement happens server-side (requireRole(['admin']));
      the UI additionally gates on the session's roles (see RequireAdmin)
      and surfaces backend 403s honestly. Endpoints the backend does not
-     expose (user directory/suspend, negotiations, trades, audit log,
-     brokers) intentionally keep local state, starting empty — the
-     console never shows invented rows. */
+     expose (dedicated user-directory/suspend, negotiations, trades, audit
+     log, brokers) intentionally keep local state, starting empty — the
+     console never shows invented rows. The user roster is assembled from
+     real listing owners instead (see refreshUsers below). */
   const liveCategoriesRef = useRef<BackendCategory[]>([]);
 
   const liveErr = (e: unknown, fallback: string) =>
@@ -440,9 +479,26 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       })));
     } catch (e) {
       setInvites([]);
-      setInvitesError(liveErr(e, 'Could not load invites from the backend.'));
+      setInvitesError(liveErr(e, 'Could not load invites.'));
     } finally {
       setInvitesLoading(false);
+    }
+  }, [liveMode]);
+
+  const refreshUsers = useCallback(async () => {
+    if (!liveMode) return;
+    setUsersLoading(true);
+    setUsersError(null);
+    try {
+      // No admin user-directory route exists, so the roster is the
+      // de-duplicated set of listing owners the admin listing feed returns.
+      const directory = await userDirectoryApi.list();
+      setUsers(directory.map(mapDirectoryUser));
+    } catch (e) {
+      setUsers([]);
+      setUsersError(liveErr(e, 'Could not load users.'));
+    } finally {
+      setUsersLoading(false);
     }
   }, [liveMode]);
 
@@ -457,37 +513,88 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       const statusParam = statusFilter === 'All statuses'
         ? 'active,price_expired,na,withdrawn,traded'
         : (UI_STATUS_PARAM[statusFilter] ?? 'active');
+      const query = {
+        status: statusParam,
+        categoryId: catId,
+        itemName: searchQuery.trim() || undefined,
+      };
       const sides = sideFilter === 'all' ? ['SELL', 'BUY'] as const : [sideFilter as 'SELL' | 'BUY'];
-      const combined: ListingRow[] = [];
-      let total = 0;
-      let pages = 0;
-      for (const side of sides) {
+
+      // One side at a time: the backend already paginates exactly as the table
+      // displays it.
+      if (sides.length === 1) {
         const { data, meta } = await listingsApi.list({
-          side,
-          status: statusParam,
-          categoryId: catId,
-          itemName: searchQuery.trim() || undefined,
+          side: sides[0],
+          ...query,
           page: listingPage,
           limit: LIVE_PAGE_SIZE,
         });
-        total += meta?.total ?? data.length;
-        pages = Math.max(pages, meta?.totalPages ?? 1);
-        data.forEach((b, i) => combined.push(mapBackendListing(b, combined.length + i, nameOf)));
+        const total = meta?.total ?? data.length;
+        const pages = meta?.totalPages ?? (total ? Math.ceil(total / LIVE_PAGE_SIZE) : 0);
+        // Deleting/withdrawing the last row on a page can leave the stored
+        // page past the end — clamp so the table never looks stuck on blank.
+        if (pages > 0 && listingPage > pages) setListingPage(pages);
+        setRows(data.map((b, i) => mapBackendListing(b, i, nameOf)));
+        setListingTotal(total);
+        setListingTotalPages(pages);
+        return;
       }
+
+      // GET /listings requires a single `side`, so "Both sides" is a merged
+      // view. Read each side's total first, then fetch only the 20-row window
+      // that belongs on the current page (a page can straddle both sides).
+      const [sellTotal, buyTotal] = await Promise.all(sides.map(async (side) => {
+        const { meta } = await listingsApi.list({ side, ...query, page: 1, limit: 1 });
+        return meta?.total ?? 0;
+      }));
+      const total = sellTotal + buyTotal;
+      const pages = total ? Math.ceil(total / LIVE_PAGE_SIZE) : 0;
+      const page = pages ? Math.min(Math.max(listingPage, 1), pages) : 1;
+      if (page !== listingPage) setListingPage(page);
+
       if (!total) {
         setRows([]);
         setListingTotal(0);
         setListingTotalPages(0);
         return;
       }
-      setRows(combined);
+
+      const start = (page - 1) * LIVE_PAGE_SIZE;
+      const end = start + LIVE_PAGE_SIZE;
+      const sideTotals = [sellTotal, buyTotal];
+      // SELL rows occupy the first block of the merged list, BUY rows the next.
+      const slices = await Promise.all(sides.map(async (side, index) => {
+        const base = index === 0 ? 0 : sideTotals[0];
+        const localStart = Math.max(0, start - base);
+        const localEnd = Math.min(sideTotals[index], end - base);
+        if (localEnd <= localStart) return [] as BackendListing[];
+
+        const firstPage = Math.floor(localStart / LIVE_PAGE_SIZE) + 1;
+        const lastPage = Math.floor((localEnd - 1) / LIVE_PAGE_SIZE) + 1;
+        const pageResults = await Promise.all(
+          Array.from({ length: lastPage - firstPage + 1 }, (_, i) =>
+            listingsApi.list({
+              side,
+              ...query,
+              page: firstPage + i,
+              limit: LIVE_PAGE_SIZE,
+            }).then((r) => r.data),
+          ),
+        );
+        const rows = pageResults.flat();
+        const offset = localStart - (firstPage - 1) * LIVE_PAGE_SIZE;
+        return rows.slice(offset, offset + (localEnd - localStart));
+      }));
+      const combined = slices.flat();
+
+      setRows(combined.map((b, i) => mapBackendListing(b, i, nameOf)));
       setListingTotal(total);
       setListingTotalPages(pages);
     } catch (e) {
       setRows([]);
       setListingTotal(0);
       setListingTotalPages(0);
-      setListingsError(liveErr(e, 'Could not load listings from the backend.'));
+      setListingsError(liveErr(e, 'Could not load listings.'));
     } finally {
       setListingsLoading(false);
     }
@@ -508,7 +615,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       setFreightRoutes([]);
       setFreightTotalPages(0);
-      setFreightError(liveErr(e, 'Could not load freight routes from the backend.'));
+      setFreightError(liveErr(e, 'Could not load freight routes.'));
     } finally {
       setFreightLoading(false);
     }
@@ -529,7 +636,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       }
       await ensureCategories();
     } catch (e) {
-      setSettingsError(liveErr(e, 'Could not load settings from the backend.'));
+      setSettingsError(liveErr(e, 'Could not load settings.'));
     } finally {
       setSettingsLoading(false);
     }
@@ -601,7 +708,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         : u));
     });
     flash(liveMode
-      ? 'Changed locally only — the backend exposes no user suspend endpoint yet'
+      ? 'Changed locally only — this change is not saved yet'
       : 'Access updated — logged to the audit trail');
   }, [flash, logAudit, liveMode]);
 
@@ -613,7 +720,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (liveMode) {
       const target = invites.find((i) => i.id === id);
       if (!target?.backendId) {
-        flash('This invite has no backend id — reload the list.');
+        flash('This invite is stale — reload the list.');
         return;
       }
       void (async () => {
@@ -699,12 +806,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       // here is the backend's real answer — surfaced, not hidden.
       const target = rows.find((r) => r.id === editId);
       if (!target?.backendId) {
-        setEditError('This row has no backend id — reload the list.');
+        setEditError('This row is stale — reload the list.');
         return;
       }
       const price = Number(editPrice.trim());
       if (editPrice.trim() === '' || !Number.isFinite(price) || price <= 0) {
-        setEditError('Enter a positive price — the backend does not allow clearing it.');
+        setEditError('Enter a positive price — price cannot be cleared.');
         return;
       }
       const patch: { price: number; weightKg?: number } = { price };
@@ -731,7 +838,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         });
         setEditId(null);
         setEditReason('');
-        flash('Saved to the backend');
+        flash('Changes saved');
         await refreshListings();
       } catch (e) {
         setEditError(liveErr(e, 'Save failed.'));
@@ -774,13 +881,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       // action (owner-only, records Withdrawn). A 403 is the backend answer.
       const target = rows.find((r) => r.id === id);
       if (!target?.backendId) {
-        flash('This row has no backend id — reload the list.');
+        flash('This row is stale — reload the list.');
         return;
       }
       void (async () => {
         try {
           await listingsApi.withdraw(target.backendId as string);
-          flash('Withdrawn on the backend (records as Withdrawn)');
+          flash('Withdrawn (recorded as Withdrawn)');
           await refreshListings();
         } catch (e) {
           flash(liveErr(e, 'Withdraw failed.'));
@@ -957,7 +1064,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       void (async () => {
         try {
           await settingsApi.update('price_expiry_time', { time: expiryTime });
-          flash('Price expiry saved to the backend');
+          flash('Price expiry saved');
         } catch (e) {
           flash(liveErr(e, 'Save failed.'));
         }
@@ -1003,7 +1110,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (liveMode) {
       const backendId = target?.backendId;
       if (!backendId) {
-        setFreightEditError('This route has no backend id — reload the list.');
+        setFreightEditError('This route is stale — reload the list.');
         return;
       }
       setFreightEditError(null);
@@ -1015,7 +1122,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
             truckCapacity: freightEditCapacity.trim() || null,
           });
           setFreightEditId(null);
-          flash('Route saved to the backend');
+          flash('Route saved');
           await refreshFreight();
         } catch (e) {
           setFreightEditError(liveErr(e, 'Route update failed.'));
@@ -1035,13 +1142,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (liveMode) {
       const backendId = freightRoutes.find((r) => r.id === id)?.backendId;
       if (!backendId) {
-        flash('This route has no backend id — reload the list.');
+        flash('This route is stale — reload the list.');
         return;
       }
       void (async () => {
         try {
           await freightApi.remove(backendId);
-          flash('Route removed from the backend');
+          flash('Route removed');
           await refreshFreight();
         } catch (e) {
           flash(liveErr(e, 'Route removal failed.'));
@@ -1093,45 +1200,44 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, [freightUploadFile, freightUploadPreview, liveMode, clearFreightUpload, flash, refreshFreight]);
 
-  const addFreightRoute = useCallback(() => {
+  const addFreightRoute = useCallback(async (): Promise<boolean> => {
     if (!newFreightDest.trim() || !newFreightLow.trim()) {
       setNewFreightError('Add a destination and price first.');
-      return;
+      return false;
     }
     const low = Number(newFreightLow);
     const high = newFreightHigh.trim() === '' ? low : Number(newFreightHigh);
     if (!Number.isFinite(low) || low <= 0) {
       setNewFreightError('Price low must be a positive number.');
-      return;
+      return false;
     }
     if (!Number.isFinite(high) || high < low) {
       setNewFreightError('Price high must be ≥ price low.');
-      return;
+      return false;
     }
     setNewFreightError(null);
     if (liveMode) {
-      void (async () => {
-        try {
-          await freightApi.create({
-            originName: newFreightOrigin,
-            destinationName: newFreightDest.trim(),
-            priceLow: low,
-            priceHigh: high,
-            unit: 'per_quintal',
-            truckCapacity: newFreightCapacity.trim() || null,
-          });
-          setNewFreightDest('');
-          setNewFreightLow('');
-          setNewFreightHigh('');
-          setNewFreightCapacity('');
-          setFreightPage(1);
-          flash('Route added to the backend');
-          await refreshFreight(1);
-        } catch (e) {
-          setNewFreightError(liveErr(e, 'Route creation failed.'));
-        }
-      })();
-      return;
+      try {
+        await freightApi.create({
+          originName: newFreightOrigin,
+          destinationName: newFreightDest.trim(),
+          priceLow: low,
+          priceHigh: high,
+          unit: 'per_quintal',
+          truckCapacity: newFreightCapacity.trim() || null,
+        });
+        setNewFreightDest('');
+        setNewFreightLow('');
+        setNewFreightHigh('');
+        setNewFreightCapacity('');
+        setFreightPage(1);
+        flash('Route added');
+        await refreshFreight(1);
+        return true;
+      } catch (e) {
+        setNewFreightError(liveErr(e, 'Route creation failed.'));
+        return false;
+      }
     }
     setFreightRoutes((prev) => [
       {
@@ -1149,11 +1255,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setNewFreightHigh('');
     setNewFreightCapacity('');
     flash('Route added and published');
+    return true;
   }, [newFreightDest, newFreightLow, newFreightHigh, newFreightCapacity, newFreightOrigin, liveMode, flash, refreshFreight]);
 
   const value = useMemo<AdminState>(() => ({
     searchQuery, setSearchQuery, countdown, toast, flash,
     users, userFilter, setUserFilter, suspendUser, editRoles,
+    usersLoading, usersError, refreshUsers,
     invites, revokeInvite,
     inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
     inviteBuyer, toggleInviteBuyer: () => setInviteBuyer((v) => !v),
@@ -1182,7 +1290,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     removeFreightRoute,
     newFreightOrigin, setNewFreightOrigin, newFreightDest, setNewFreightDest,
     newFreightLow, setNewFreightLow, newFreightHigh, setNewFreightHigh,
-    newFreightCapacity, setNewFreightCapacity, newFreightError, addFreightRoute,
+    newFreightCapacity, setNewFreightCapacity, newFreightError, setNewFreightError, addFreightRoute,
     liveMode,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,
@@ -1195,6 +1303,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }), [
     searchQuery, countdown, toast, flash,
     users, userFilter, suspendUser, editRoles, invites, revokeInvite,
+    usersLoading, usersError, refreshUsers,
     inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, invitePaymentTerms, inviteError, sendInvite,
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
     editPrice, editWeight, editReason, editError, saveEdit, forceExpire,
@@ -1210,7 +1319,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     freightEditId, openFreightEdit, closeFreightEdit,
     freightEditLow, freightEditHigh, freightEditCapacity, freightEditError, saveFreightEdit,
     removeFreightRoute, newFreightOrigin, newFreightDest, newFreightLow, newFreightHigh,
-    newFreightCapacity, newFreightError, addFreightRoute,
+    newFreightCapacity, newFreightError, setNewFreightError, addFreightRoute,
     liveMode,
     invitesLoading, invitesError, refreshInvites,
     listingsLoading, listingsError, listingPage, setListingPage,

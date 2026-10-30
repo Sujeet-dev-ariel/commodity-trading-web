@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { EmptyState, Field, FilterTag } from '../../components/common/controls';
+import { EmptyState, Field, FilterTag, Pagination, usePagination } from '../../components/common/controls';
 import { STATUS_CLS } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
@@ -19,8 +19,12 @@ export function NegotiationsPage() {
       .filter((n) => !q || n.item.toLowerCase().includes(q) || n.seller.toLowerCase().includes(q) || n.buyer.toLowerCase().includes(q));
   }, [negotiations, negoFilter, searchQuery]);
 
+  const {
+    page: listPage, setPage: setListPage, totalPages: listTotalPages, pageItems: listPageItems, total: listTotal,
+  } = usePagination(list, 8, `${negoFilter}|${searchQuery}`);
+
   const active = negotiations.find((n) => n.id === selectedNegoId) ?? negotiations[0];
-  if (!active) return <EmptyState message="No negotiations yet — the backend exposes no negotiations feed, so threads started in-session appear here." />;
+  if (!active) return <EmptyState message="No negotiations yet — threads started in this session appear here." />;
 
   const expiry = (urgent: boolean): React.CSSProperties => ({
     fontSize: 11.5, marginTop: 2, fontWeight: 600, color: urgent ? '#d64545' : 'var(--color-neutral-600)',
@@ -39,7 +43,7 @@ export function NegotiationsPage() {
             <FilterTag label="Completed" active={negoFilter === 'done'} onClick={() => setNegoFilter('done')} />
           </div>
           <div className="panel">
-            {list.map((n) => (
+            {listPageItems.map((n) => (
               <div
                 key={n.id}
                 onClick={() => selectNego(n.id)}
@@ -68,6 +72,16 @@ export function NegotiationsPage() {
             ))}
             {list.length === 0 ? <EmptyState message="No negotiations in this view." /> : null}
           </div>
+          {listTotalPages > 1 ? (
+            <Pagination
+              page={listPage}
+              totalPages={listTotalPages}
+              total={listTotal}
+              pageSize={8}
+              onPageChange={setListPage}
+              style={{ justifyContent: 'center' }}
+            />
+          ) : null}
         </div>
 
         <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>

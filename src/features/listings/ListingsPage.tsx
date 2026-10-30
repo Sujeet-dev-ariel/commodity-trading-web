@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { EmptyState, Field, FilterTag, Modal } from '../../components/common/controls';
+import { EmptyState, Field, FilterTag, Modal, Pagination } from '../../components/common/controls';
 import { STATUS_CLS } from '../../data/constants';
-import { useAdmin } from '../../store/AdminContext';
+import { LIVE_PAGE_SIZE, useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
 
 const GRID: React.CSSProperties = {
@@ -28,8 +28,12 @@ export function ListingsPage() {
     return () => window.clearTimeout(id);
   }, [liveMode, refreshListings]);
 
-  // Reset to page 1 whenever the filter set changes (page itself excluded —
-  // refreshListings already depends on it).
+  // Any filter or search change starts a new result set at page 1.
+  useEffect(() => {
+    setListingPage(1);
+  }, [sideFilter, catFilter, statusFilter, searchQuery, setListingPage]);
+
+  // Reset to page 1 immediately on filter clicks for instant feedback.
   const resetPage = () => setListingPage(1);
 
   const filtered = useMemo(() => {
@@ -47,13 +51,6 @@ export function ListingsPage() {
 
   return (
     <>
-      {liveMode ? (
-        <div className="callout-info">
-          Connected to the backend (<strong>GET /listings</strong>, admin sees all rows, 20 per page).
-          Edit &amp; Expire call the owner-only <strong>PATCH /listings/:id</strong> — the API has no
-          admin edit-on-behalf endpoint, so a 403 there is the backend&apos;s real answer.
-        </div>
-      ) : null}
       <div className="panel filter-bar">
         <div style={{ display: 'flex', gap: 5 }}>
           {([['all', 'Both sides'], ['SELL', 'Sell listings'], ['BUY', 'Buy requirements']] as const).map(([key, label]) => (
@@ -117,27 +114,14 @@ export function ListingsPage() {
           {listingsLoading ? <div className="text-muted" style={{ padding: '18px 16px', fontSize: 13 }}>Loading listings…</div> : null}
         </div>
       </div>
-      {liveMode && listingTotalPages > 1 ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
-          <button
-            className="btn btn-secondary"
-            disabled={listingPage <= 1 || listingsLoading}
-            onClick={() => setListingPage(listingPage - 1)}
-            style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
-          >
-            ← Prev
-          </button>
-          <span className="text-muted" style={{ fontSize: 12 }}>Page {listingPage} of {listingTotalPages}</span>
-          <button
-            className="btn btn-secondary"
-            disabled={listingPage >= listingTotalPages || listingsLoading}
-            onClick={() => setListingPage(listingPage + 1)}
-            style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
-          >
-            Next →
-          </button>
-        </div>
-      ) : null}
+      <Pagination
+        page={listingPage}
+        totalPages={listingTotalPages}
+        total={liveMode ? listingTotal : filtered.length}
+        pageSize={LIVE_PAGE_SIZE}
+        onPageChange={setListingPage}
+        disabled={listingsLoading}
+      />
       <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
         Editing on a user&apos;s behalf writes an entry to the audit log with before/after values.
       </p>

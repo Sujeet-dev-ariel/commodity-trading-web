@@ -111,3 +111,72 @@ export function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
+
+/**
+ * Client-side pagination for a whole in-memory list. Server-paginated pages
+ * (listings, freight) drive <Pagination> directly from their own page state.
+ */
+export function usePagination<T>(items: T[], pageSize = 10, resetKey?: unknown) {
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  // Clamp instead of trusting stored page when the list shrinks.
+  const current = Math.min(Math.max(page, 1), totalPages);
+  const pageItems = React.useMemo(
+    () => items.slice((current - 1) * pageSize, current * pageSize),
+    [items, current, pageSize],
+  );
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [resetKey]);
+
+  return { page: current, setPage, totalPages, pageItems, total: items.length, pageSize };
+}
+
+export function Pagination({
+  page,
+  totalPages,
+  onPageChange,
+  total,
+  pageSize = 10,
+  disabled = false,
+  style,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  total?: number;
+  pageSize?: number;
+  disabled?: boolean;
+  style?: React.CSSProperties;
+}) {
+  if (totalPages <= 1) return null;
+  const from = total != null ? (page - 1) * pageSize + 1 : null;
+  const to = total != null ? Math.min(page * pageSize, total) : null;
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', ...style }}>
+      {total != null && from != null && to != null ? (
+        <span className="text-muted" style={{ fontSize: 12, marginRight: 'auto' }}>
+          Showing {from}–{to} of {total}
+        </span>
+      ) : null}
+      <button
+        className="btn btn-secondary"
+        disabled={disabled || page <= 1}
+        onClick={() => onPageChange(page - 1)}
+        style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
+      >
+        ← Prev
+      </button>
+      <span className="text-muted" style={{ fontSize: 12 }}>Page {page} of {totalPages}</span>
+      <button
+        className="btn btn-secondary"
+        disabled={disabled || page >= totalPages}
+        onClick={() => onPageChange(page + 1)}
+        style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
+      >
+        Next →
+      </button>
+    </div>
+  );
+}

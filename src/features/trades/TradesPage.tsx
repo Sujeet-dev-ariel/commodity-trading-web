@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { EmptyState } from '../../components/common/controls';
+import { EmptyState, Pagination, usePagination } from '../../components/common/controls';
 import { useAdmin } from '../../store/AdminContext';
 import { inr, lakhs } from '../../utils/format';
 
@@ -19,13 +19,16 @@ export function TradesPage() {
   }, [trades, searchQuery]);
 
   const tradeValue = (t: { bags: number; price: number }) => t.price * t.bags;
+  const {
+    page, setPage, totalPages, pageItems,
+  } = usePagination(filtered, 10, searchQuery);
   const totalValue = filtered.reduce((s, t) => s + tradeValue(t), 0);
   const viaBroker = filtered.filter((t) => t.broker !== 'Self').length;
   const direct = filtered.length - viaBroker;
   const firms = new Set(filtered.flatMap((t) => [t.seller, t.buyer])).size;
 
   const summary = [
-    { label: 'Trades closed', value: String(filtered.length), meta: filtered.length ? `${viaBroker} through a broker, ${direct} direct` : 'no trade feed from the backend yet', hot: false },
+    { label: 'Trades closed', value: String(filtered.length), meta: filtered.length ? `${viaBroker} through a broker, ${direct} direct` : 'no trades recorded yet', hot: false },
     { label: 'Value traded', value: lakhs(totalValue), meta: filtered.length ? `across ${firms} firms` : '—', hot: false },
     { label: 'Brokerage earned', value: inr(Math.round(totalValue * 0.0025)), meta: 'placeholder until the model is set', hot: false },
     { label: 'Brokerage this month', value: inr(0), meta: 'placeholder until the model is set', hot: true },
@@ -65,7 +68,7 @@ export function TradesPage() {
             <div>TRADE</div><div>ITEM</div><div>SELLER</div><div>BUYER</div><div>BAGS</div><div>PRICE</div><div>VALUE</div><div>BROKER</div>
             <div style={{ color: 'var(--color-accent-2-700)', whiteSpace: 'nowrap' }}>BROKERAGE ⚑</div>
           </div>
-          {filtered.map((t) => (
+          {pageItems.map((t) => (
             <div key={t.code} className="grid-row" style={{ ...GRID, minWidth: 1020 }}>
               <div style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-neutral-600)' }}>{t.code}</div>
               <div style={{ fontWeight: 600 }}>{t.item}</div>
@@ -84,8 +87,19 @@ export function TradesPage() {
               </div>
             </div>
           ))}
-          {filtered.length === 0 ? <EmptyState message="No trades yet — the backend exposes no trades feed, so closed trades recorded this session appear here." /> : null}
+          {filtered.length === 0 ? <EmptyState message="No trades yet — closed trades recorded this session appear here." /> : null}
         </div>
+        {totalPages > 1 ? (
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-neutral-200)' }}>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={filtered.length}
+              pageSize={10}
+              onPageChange={setPage}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { EmptyState } from '../../components/common/controls';
+import { EmptyState, Pagination, usePagination } from '../../components/common/controls';
 import { useAdmin } from '../../store/AdminContext';
 
 const GRID: React.CSSProperties = {
@@ -28,6 +28,10 @@ export function AuditPage() {
 
   const admins = useMemo(() => ['All admins', ...Array.from(new Set(audit.map((a) => a.admin)))], [audit]);
   const actions = useMemo(() => ['All actions', ...Array.from(new Set(audit.map((a) => a.action)))], [audit]);
+
+  const {
+    page, setPage, totalPages, pageItems,
+  } = usePagination(filtered, 10, `${auditAdmin}|${auditAction}|${auditQuery}`);
 
   return (
     <>
@@ -58,7 +62,7 @@ export function AuditPage() {
           <div className="grid-head" style={{ ...GRID, minWidth: 860 }}>
             <div>WHEN</div><div>ADMIN</div><div>ACTION</div><div>ENTITY</div><div>BEFORE → AFTER</div>
           </div>
-          {filtered.map((a, i) => (
+          {pageItems.map((a, i) => (
             <div key={`${a.when}-${a.entity}-${i}`} className="grid-row" style={{ ...GRID, minWidth: 860 }}>
               <div className="text-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{a.when}</div>
               <div style={{ fontWeight: 600 }}>{a.admin}</div>
@@ -75,6 +79,17 @@ export function AuditPage() {
           ))}
           {filtered.length === 0 ? <EmptyState message="No audit entries match these filters." /> : null}
         </div>
+        {totalPages > 1 ? (
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-neutral-200)' }}>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={filtered.length}
+              pageSize={10}
+              onPageChange={setPage}
+            />
+          </div>
+        ) : null}
       </div>
     </>
   );

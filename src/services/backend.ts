@@ -9,8 +9,10 @@
  *  - surface 403s honestly instead of inventing endpoints.
  *
  * Routes with NO backend endpoint remain unavailable rather than being
- * simulated (negotiations, trades, audit log, user directory, brokers).
- * Nothing here invents an endpoint.
+ * simulated (negotiations, trades, audit log, brokers).
+ * The admin user directory has no dedicated route (GET /users is 404; only
+ * /users/me exists), so it is assembled from the owners returned by the
+ * admin listing feed — see userDirectoryApi below.
  */
 import { api, buildQuery } from './api';
 
@@ -155,6 +157,93 @@ export const listingsApi = {
   /** PATCH /listings/:id/withdraw — owner-only, same caveat as update. */
   withdraw: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
+};
+
+/* ---------- admin user directory (derived from listings/auth) ---------- */
+
+export interface BackendDirectoryUser {
+  id: string;
+  name: string | null;
+  firmName: string | null;
+  phone: string;
+  roles: string[];
+  /** Newest listing/requirement this user created (ISO string), if any. */
+  lastListingAt: string | null;
+  /** Payment terms (days) copied onto their most recent listing. */
+  paymentTerms: number | null;
+}
+
+const DIRECTORY_PAGE_SIZE = 100;
+// Admin sessions see every row regardless of status (services/listing.service.js).
+const DIRECTORY_STATUSES = 'active,price_expired,na,withdrawn,traded';
+
+/**
+ * The backend exposes no admin "list users" route. The listing feed does
+ * return each row's owner (`userId` + user.name/firmName/phone/roles) to
+ * admin sessions, so the roster is the de-duplicated union of every sell
+ * listing and buy requirement. Accounts that have never posted anything are
+ * not discoverable this way — pending invites are merged in by the UI.
+ */
+export const userDirectoryApi = {
+  list: async (): Promise<BackendDirectoryUser[]> => {
+    const byId = new Map<string, BackendDirectoryUser>();
+
+    for (const side of ['SELL', 'BUY'] as const) {
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const { data, meta } = await listingsApi.list({
+          side,
+          status: DIRECTORY_STATUSES,
+          page,
+          limit: DIRECTORY_PAGE_SIZE,
+        });
+
+        for (const listing of data) {
+          const owner = listing.user;
+          const id = listing.userId;
+          if (!owner || !id) continue;
+
+          const latestAt = listing.createdAt || null;
+          const terms = typeof listing.paymentTerms === 'number' ? listing.paymentTerms : null;
+          const existing = byId.get(id);
+
+          if (!existing) {
+            byId.set(id, {
+              id,
+              name: owner.name,
+              firmName: owner.firmName,
+              phone: owner.phone ?? '',
+              roles: owner.roles ?? [],
+              lastListingAt: latestAt,
+              paymentTerms: terms,
+            });
+            continue;
+          }
+
+          if (latestAt && (!existing.lastListingAt || latestAt > existing.lastListingAt)) {
+            existing.lastListingAt = latestAt;
+            if (terms != null) existing.paymentTerms = terms;
+          } else if (existing.paymentTerms == null && terms != null) {
+            existing.paymentTerms = terms;
+          }
+          if (!existing.name && owner.name) existing.name = owner.name;
+          if (!existing.firmName && owner.firmName) existing.firmName = owner.firmName;
+          if (!existing.phone && owner.phone) existing.phone = owner.phone;
+          if (!existing.roles.length && owner.roles?.length) existing.roles = owner.roles;
+        }
+
+        totalPages = meta?.totalPages ?? 1;
+        page += 1;
+      } while (page <= totalPages);
+    }
+
+    return [...byId.values()].sort((a, b) => {
+      const an = (a.firmName || a.name || a.phone).toLowerCase();
+      const bn = (b.firmName || b.name || b.phone).toLowerCase();
+      return an.localeCompare(bn) || a.id.localeCompare(b.id);
+    });
+  },
 };
 
 /* ---------- freight (routes/freight.js — authenticated; writes: admin) ---------- */

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Field } from '../../components/common/controls';
+import { Field, Pagination, usePagination } from '../../components/common/controls';
 import { useAdmin } from '../../store/AdminContext';
 
 export function SettingsPage() {
@@ -21,6 +21,19 @@ export function SettingsPage() {
   const [itemError, setItemError] = useState<string | null>(null);
   const [tosForm, setTosForm] = useState({ effectiveDate: '', termsUrl: '', privacyUrl: '' });
   const [tosError, setTosError] = useState<string | null>(null);
+
+  const {
+    page: brokerPage, setPage: setBrokerPage, totalPages: brokerTotalPages, pageItems: brokerPageItems,
+  } = usePagination(brokers, 10, 'brokers');
+  const {
+    page: catPage, setPage: setCatPage, totalPages: catTotalPages, pageItems: catPageItems,
+  } = usePagination(categories, 10, 'categories');
+  const {
+    page: itemPage, setPage: setItemPage, totalPages: itemTotalPages, pageItems: itemPageItems, total: itemTotal,
+  } = usePagination(liveCommodities, 10, itemsCatId);
+  const {
+    page: tosPage, setPage: setTosPage, totalPages: tosTotalPages, pageItems: tosPageItems,
+  } = usePagination(tosVersions, 5, 'tos');
 
   // Live backend: price_expiry_time (PATCH admin-only), taxonomy
   // (writes admin-only), ToS versions (publish/list admin-only).
@@ -78,14 +91,6 @@ export function SettingsPage() {
   return (
     <div className="settings-split">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {liveMode ? (
-          <div className="callout-info">
-            Connected to the backend. Expiry (<strong>PATCH /settings/:key</strong>), taxonomy
-            (<strong>/commodity-categories</strong>, <strong>/commodities</strong>) and terms versions
-            (<strong>/tos-versions</strong>) are all admin-only routes. Brokers, payment-terms
-            defaults and parse templates have no backend endpoints yet and stay local.
-          </div>
-        ) : null}
         {settingsError ? <div className="field-error">{settingsError}</div> : null}
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -98,10 +103,9 @@ export function SettingsPage() {
             <Field label="Timezone">
               <input
                 className="input"
-                value={liveMode ? 'Asia/Kolkata (fixed by backend)' : timezone}
+                value={liveMode ? 'Asia/Kolkata' : timezone}
                 onChange={(e) => admin.setTimezone(e.target.value)}
                 disabled={liveMode}
-                title={liveMode ? 'The backend fixes the timezone to Asia/Kolkata — it is not a stored setting' : undefined}
               />
             </Field>
           </div>
@@ -116,7 +120,7 @@ export function SettingsPage() {
             The finite dropdown shown on the trade-accept screen. Users can always type a free-text name or pick &ldquo;Self&rdquo;.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {brokers.map((b) => (
+            {brokerPageItems.map((b) => (
               <div key={b.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
                 <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{b.name}</div>
                 <div className="text-muted" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{b.phone}</div>
@@ -126,6 +130,15 @@ export function SettingsPage() {
               </div>
             ))}
           </div>
+          {brokerTotalPages > 1 ? (
+            <Pagination
+              page={brokerPage}
+              totalPages={brokerTotalPages}
+              total={brokers.length}
+              pageSize={10}
+              onPageChange={setBrokerPage}
+            />
+          ) : null}
           <button className="btn btn-secondary" onClick={addBroker} style={{ alignSelf: 'flex-start', height: 34, padding: '0 14px', fontSize: 13 }}>
             Add broker
           </button>
@@ -153,12 +166,21 @@ export function SettingsPage() {
               Publishing a version forces every user to re-accept on next login (admin-only).
             </p>
             {tosVersionsError ? <div className="field-error">{tosVersionsError}</div> : null}
-            {tosVersions.map((v) => (
+            {tosPageItems.map((v) => (
               <div key={v.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8, fontSize: 12.5 }}>
                 <span style={{ fontWeight: 700 }}>v{v.version}</span>
                 <span className="text-muted">effective {new Date(v.effectiveDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
               </div>
             ))}
+            {tosTotalPages > 1 ? (
+              <Pagination
+                page={tosPage}
+                totalPages={tosTotalPages}
+                total={tosVersions.length}
+                pageSize={5}
+                onPageChange={setTosPage}
+              />
+            ) : null}
             <Field label="Effective date">
               <input className="input" type="date" value={tosForm.effectiveDate} onChange={(e) => setTosForm({ ...tosForm, effectiveDate: e.target.value })} />
             </Field>
@@ -190,7 +212,7 @@ export function SettingsPage() {
           </p>
           {categoryError ? <div className="field-error">{categoryError}</div> : null}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {categories.map((c) => (
+            {catPageItems.map((c) => (
               <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
                 <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{c}</div>
                 {liveMode ? (
@@ -210,6 +232,15 @@ export function SettingsPage() {
               </div>
             ))}
           </div>
+          {catTotalPages > 1 ? (
+            <Pagination
+              page={catPage}
+              totalPages={catTotalPages}
+              total={categories.length}
+              pageSize={10}
+              onPageChange={setCatPage}
+            />
+          ) : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <input
               className="input"
@@ -239,7 +270,7 @@ export function SettingsPage() {
             </Field>
             {commodityError ? <div className="field-error">{commodityError}</div> : null}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {liveCommodities.map((m) => (
+              {itemPageItems.map((m) => (
                 <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
                   <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{m.name}</div>
                   <button
@@ -275,6 +306,15 @@ export function SettingsPage() {
                 <div className="text-muted" style={{ fontSize: 12.5 }}>No items in this category yet.</div>
               ) : null}
             </div>
+            {itemTotalPages > 1 ? (
+              <Pagination
+                page={itemPage}
+                totalPages={itemTotalPages}
+                total={itemTotal}
+                pageSize={10}
+                onPageChange={setItemPage}
+              />
+            ) : null}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input
                 className="input"
@@ -299,7 +339,7 @@ export function SettingsPage() {
           </div>
           <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
             When a supplier&apos;s price sheet has a stable layout, the parser can learn it once and reuse it.
-            No templates saved yet — they will be listed here once the parser backend exists.
+            No templates saved yet.
           </p>
         </div>
 
