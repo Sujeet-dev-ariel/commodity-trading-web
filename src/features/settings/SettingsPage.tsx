@@ -7,8 +7,9 @@ export function SettingsPage() {
   const {
     brokers, removeBroker, addBroker,
     categories, newCategory, setNewCategory, addCategory,
-    expiryTime, setExpiryTime, timezone,
+    expiryTime, setExpiryTime, freightExpiryTime, setFreightExpiryTime, timezone,
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
+    saveFreightExpiry,
     liveMode, settingsLoading, settingsError, refreshLiveSettings,
     liveCategories, categoryError, renameCategory, deleteCategory,
     liveCommodities, commoditiesLoading, commodityError, refreshCommodities,
@@ -112,7 +113,32 @@ export function SettingsPage() {
           <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
             All sell listings and buy requirements clear at this time. Sellers are pushed a reminder 30 minutes before.
           </p>
+          <button className="btn btn-primary" onClick={saveSettings} style={{ height: 38, padding: '0 18px', fontSize: 13, alignSelf: 'flex-start' }}>
+            {liveMode ? 'Save price expiry' : 'Save settings'}
+          </button>
         </div>
+
+        {liveMode ? (
+          <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+              Freight price expiry {settingsLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
+            </div>
+            <Field label="Routes expire daily at">
+              <input
+                className="input"
+                type="time"
+                value={freightExpiryTime}
+                onChange={(e) => setFreightExpiryTime(e.target.value)}
+              />
+            </Field>
+            <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
+              This cutoff applies independently to freight route prices. An unset value defaults to 02:00 Asia/Kolkata.
+            </p>
+            <button className="btn btn-primary" onClick={saveFreightExpiry} style={{ height: 38, padding: '0 18px', fontSize: 13, alignSelf: 'flex-start' }}>
+              Save freight expiry
+            </button>
+          </div>
+        ) : null}
 
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Broker list</div>
@@ -150,11 +176,7 @@ export function SettingsPage() {
             <input className="input" value={defaultPaymentTerms} onChange={(e) => setDefaultPaymentTerms(e.target.value)} style={{ minHeight: 44 }} />
           </Field>
           <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>Sellers can override this per listing.</p>
-          <div>
-            <button className="btn btn-primary" onClick={saveSettings} style={{ height: 38, padding: '0 18px', fontSize: 13 }}>
-              Save settings
-            </button>
-          </div>
+          {!liveMode ? <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>Payment terms are preview-only and are not saved to the backend.</p> : null}
         </div>
 
         {liveMode ? (

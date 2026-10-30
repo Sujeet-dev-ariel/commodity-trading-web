@@ -40,12 +40,13 @@ import {
   type TosVersion,
 } from '../services/backend';
 
-function nextExpiryCountdown(): string {
-  // Time left until 02:00 Asia/Kolkata (UTC+5:30), the daily price expiry.
+function nextExpiryCountdown(expiryTime: string): string {
+  // Time left until the configured daily price expiry in Asia/Kolkata (UTC+5:30).
   const now = new Date();
   const istNow = new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60000);
   const expiry = new Date(istNow);
-  expiry.setHours(2, 0, 0, 0);
+  const [hours, minutes] = expiryTime.split(':').map(Number);
+  expiry.setHours(hours, minutes, 0, 0);
   if (expiry.getTime() <= istNow.getTime()) expiry.setDate(expiry.getDate() + 1);
   const diffMs = expiry.getTime() - istNow.getTime();
   const h = Math.floor(diffMs / 3600000);
@@ -130,11 +131,14 @@ interface AdminState {
   setNewCategory: (v: string) => void;
   expiryTime: string;
   setExpiryTime: (v: string) => void;
+  freightExpiryTime: string;
+  setFreightExpiryTime: (v: string) => void;
   timezone: string;
   setTimezone: (v: string) => void;
   defaultPaymentTerms: string;
   setDefaultPaymentTerms: (v: string) => void;
   saveSettings: () => void;
+  saveFreightExpiry: () => void;
 
   audit: AuditEntry[];
   auditAdmin: string;
@@ -326,7 +330,7 @@ function mapDirectoryUser(u: BackendDirectoryUser, index: number): UserRecord {
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [countdown, setCountdown] = useState(nextExpiryCountdown);
+  const [countdown, setCountdown] = useState(() => nextExpiryCountdown('02:00'));
   const [toast, setToast] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
@@ -367,6 +371,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [expiryTime, setExpiryTime] = useState('02:00');
+  const [freightExpiryTime, setFreightExpiryTime] = useState('02:00');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('10-15 days');
 
@@ -421,9 +426,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [tosVersionsError, setTosVersionsError] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = window.setInterval(() => setCountdown(nextExpiryCountdown()), 30000);
+    setCountdown(nextExpiryCountdown(expiryTime));
+    const id = window.setInterval(() => setCountdown(nextExpiryCountdown(expiryTime)), 30000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [expiryTime]);
 
   const flash = useCallback((msg: string) => {
     setToast(msg);
@@ -626,14 +632,23 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setSettingsLoading(true);
     setSettingsError(null);
     try {
-      try {
-        const s = await settingsApi.getByKey('price_expiry_time');
-        const t = (s.value as { time?: unknown } | null)?.time;
-        if (typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)) setExpiryTime(t);
-      } catch (e) {
-        // A missing row (404) just means "not configured yet" — keep 02:00.
-        if (!(e instanceof ApiError && e.status === 404)) throw e;
-      }
+      const readExpiryTime = async (key: string) => {
+        try {
+          const setting = await settingsApi.getByKey(key);
+          const time = (setting.value as { time?: unknown } | null)?.time;
+          return typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : '02:00';
+        } catch (e) {
+          // A missing row means this cutoff has not been configured yet.
+          if (e instanceof ApiError && e.status === 404) return '02:00';
+          throw e;
+        }
+      };
+      const [priceTime, freightTime] = await Promise.all([
+        readExpiryTime('price_expiry_time'),
+        readExpiryTime('freight_expiry_time'),
+      ]);
+      setExpiryTime(priceTime);
+      setFreightExpiryTime(freightTime);
       await ensureCategories();
     } catch (e) {
       setSettingsError(liveErr(e, 'Could not load settings.'));
@@ -1074,6 +1089,22 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     flash('Settings saved — expiry, brokers and taxonomy updated');
   }, [flash, liveMode, expiryTime]);
 
+  const saveFreightExpiry = useCallback(() => {
+    if (!liveMode) return;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(freightExpiryTime)) {
+      flash('Freight expiry time must be HH:mm (24-hour).');
+      return;
+    }
+    void (async () => {
+      try {
+        await settingsApi.update('freight_expiry_time', { time: freightExpiryTime });
+        flash('Freight expiry saved');
+      } catch (e) {
+        flash(liveErr(e, 'Freight expiry save failed.'));
+      }
+    })();
+  }, [flash, freightExpiryTime, liveMode]);
+
   const publishPending = useCallback(() => {
     if (liveMode) return;
     setFreightRoutes((prev) => prev.map((r) => (r.status === 'Pending review' ? { ...r, status: 'Published' as const } : r)));
@@ -1276,8 +1307,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     trades, exportCsv,
     brokers, removeBroker, addBroker,
     categories, addCategory, newCategory, setNewCategory,
-    expiryTime, setExpiryTime, timezone, setTimezone,
-    defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
+    expiryTime, setExpiryTime, freightExpiryTime, setFreightExpiryTime, timezone, setTimezone,
+    defaultPaymentTerms, setDefaultPaymentTerms, saveSettings, saveFreightExpiry,
     audit, auditAdmin, setAuditAdmin, auditAction, setAuditAction, auditQuery, setAuditQuery,
     freightRoutes, freightOriginFilter, setFreightOriginFilter,
     freightLoading, freightError, freightPage, setFreightPage, freightTotalPages, refreshFreight,
@@ -1310,7 +1341,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     negotiations, negoFilter, selectedNegoId, selectNego,
     nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv,
     brokers, removeBroker, addBroker, categories, addCategory, newCategory,
-    expiryTime, timezone, defaultPaymentTerms, saveSettings,
+    expiryTime, freightExpiryTime, timezone, defaultPaymentTerms, saveSettings, saveFreightExpiry,
     audit, auditAdmin, auditAction, auditQuery,
     freightRoutes, freightLoading, freightError, freightPage, freightTotalPages, refreshFreight,
     freightUploadFile, freightUploadPreview, freightUploadLoading, freightUploadError,

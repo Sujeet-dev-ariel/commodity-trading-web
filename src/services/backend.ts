@@ -330,16 +330,24 @@ export interface BackendSetting {
   key: string;
   value: unknown;
   updatedBy: string | null;
-  updatedAt?: string;
+  updatedAt: string;
+}
+
+export interface SettingFilters {
+  key?: string;
+  page?: number;
+  limit?: number;
 }
 
 export const settingsApi = {
-  /** GET /settings?key= */
-  list: (key?: string) =>
-    api.getPage<BackendSetting[]>(`/settings${buildQuery({ key })}`),
+  /** GET /settings?key=&page=&limit= — any authenticated user. */
+  list: (f: SettingFilters = {}) =>
+    api.getPage<BackendSetting[]>(`/settings${buildQuery({
+      key: f.key, page: f.page, limit: f.limit,
+    })}`),
   /** GET /settings/:key */
   getByKey: (key: string) => api.get<BackendSetting>(`/settings/${encodeURIComponent(key)}`),
-  /** PATCH /settings/:key { value } — requireRole(['admin']). */
+  /** PATCH /settings/:key { value } — upsert, requireRole(['admin']). */
   update: (key: string, value: unknown) =>
     api.patch<BackendSetting>(`/settings/${encodeURIComponent(key)}`, { value }),
 };

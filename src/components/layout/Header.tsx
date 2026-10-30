@@ -17,7 +17,7 @@ export function Header({
   onToggleSidebar?: () => void;
   sidebarCollapsed?: boolean;
 }) {
-  const { searchQuery, setSearchQuery, countdown } = useAdmin();
+  const { searchQuery, setSearchQuery, countdown, expiryTime } = useAdmin();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -35,6 +35,8 @@ export function Header({
     void logout();
     navigate('/login', { replace: true });
   };
+  const [expiryHour, expiryMinute] = expiryTime.split(':').map(Number);
+  const expiryLabel = `${expiryHour % 12 || 12}:${String(expiryMinute).padStart(2, '0')} ${expiryHour < 12 ? 'AM' : 'PM'} IST`;
 
   return (
     <>
@@ -92,7 +94,7 @@ export function Header({
               <strong style={{ color: 'var(--color-accent-700)', fontVariantNumeric: 'tabular-nums' }}>
                 {countdown}
               </strong>
-              {' '}· 2:00 AM IST
+              {' '}· {expiryLabel}
             </div>
           </div>
           <div className="header-user">
